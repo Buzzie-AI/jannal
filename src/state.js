@@ -6,6 +6,7 @@ export const state = {
   selectedTurn: null,
   profiles: {},
   activeProfile: 'All Tools',
+  toolsUsed: new Set(), // tools used across session (for "never used" indicator)
 }
 
 export let modalState = {

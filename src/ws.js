@@ -1,7 +1,7 @@
 import { state, MAX_TURNS } from './state.js'
 import { renderAll, renderStatus } from './render.js'
 import { renderProfileSelector } from './profiles.js'
-import { persistSession } from './session.js'
+import { persistSession, addDailyCost } from './session.js'
 
 // ─── WebSocket ──────────────────────────────────────────────────────────────
 
@@ -42,6 +42,9 @@ export function connect() {
     }
 
     if (data.type === 'request') {
+      if (data.toolsUsed && data.toolsUsed.length) {
+        data.toolsUsed.forEach(name => state.toolsUsed.add(name))
+      }
       state.turns.push(data)
       // Evict oldest turns to keep memory bounded
       if (state.turns.length > MAX_TURNS) {
@@ -70,7 +73,10 @@ export function connect() {
       if (latest) {
         latest.actualUsage = data.usage
         latest.stopReason = data.stopReason
-        if (data.cost) latest.actualCost = data.cost
+        if (data.cost) {
+          latest.actualCost = data.cost
+          addDailyCost(data.cost.totalCost)
+        }
         renderAll()
         persistSession(state)
       }
