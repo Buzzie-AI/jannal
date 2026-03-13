@@ -2,13 +2,16 @@
   "name": "jannal",
   "version": "0.1.0",
   "description": "Intercept, visualize, and optimize LLM context windows. Proxy that sits between your AI tools and the Anthropic API.",
-  "main": "server.js",
+  "main": "electron/main.js",
   "scripts": {
     "dev:server": "node server.js",
     "dev:ui": "vite",
     "build": "vite build",
     "start": "node server.js",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron": "electron .",
+    "electron:build": "vite build && electron-builder --mac",
+    "electron:build:all": "vite build && electron-builder --mac --win --linux"
   },
   "keywords": [
     "llm",
@@ -30,9 +33,60 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "electron-updater": "^6.3.0",
     "ws": "^8.16.0"
   },
   "devDependencies": {
+    "electron": "^34.0.0",
+    "electron-builder": "^26.0.0",
     "vite": "^8.0.0"
+  },
+  "build": {
+    "appId": "com.buzzie.jannal",
+    "productName": "Jannal",
+    "copyright": "Copyright © 2026 Arvind Naidu",
+    "publish": {
+      "provider": "github",
+      "owner": "Buzzie-AI",
+      "repo": "jannal"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.icns",
+      "darkModeSupport": true,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "dmg": {
+      "title": "Jannal",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "build/icon.ico"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Development",
+      "icon": "build/icons"
+    },
+    "files": [
+      "electron/**/*",
+      "server.js",
+      "public/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraFiles": [
+      {
+        "from": "profiles.json",
+        "to": "profiles.json",
+        "filter": ["**/*"]
+      }
+    ],
+    "asar": true
   }
 }
