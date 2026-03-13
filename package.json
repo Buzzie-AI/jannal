@@ -78,6 +78,11 @@
       "node_modules/**/*",
       "package.json"
     ],
-    "asar": true
+    "asar": true,
+    "asarUnpack": [
+      "server.js",
+      "public/**/*",
+      "node_modules/**/*"
+    ]
   }
 }
