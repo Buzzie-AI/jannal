@@ -1,8 +1,8 @@
 import './styles.css'
 import { state } from './state.js'
 import { connect } from './ws.js'
-import { renderAll, renderContextBar, renderTurnList, renderDetail } from './render.js'
-import { openModal, closeModal, setModalView, toggleAllTools, toggleGroupTools, onToolToggle, saveCurrentAsProfile, filterModalContent, copyModalContent } from './modal.js'
+import { renderAll, renderContextBar, renderTurnList, renderDetail, copyClaudeCommand } from './render.js'
+import { openModal, closeModal, setModalView, toggleAllTools, toggleGroupTools, onToolToggle, saveCurrentAsProfile, createProfileFromThisTurn, filterModalContent, copyModalContent } from './modal.js'
 import { onProfileChange } from './profiles.js'
 import { restoreSession, exportSessionJSON, exportSessionCSV, downloadExport, persistSession } from './session.js'
 
@@ -58,8 +58,10 @@ window.toggleAllTools = toggleAllTools
 window.toggleGroupTools = toggleGroupTools
 window.onToolToggle = onToolToggle
 window.saveCurrentAsProfile = saveCurrentAsProfile
+window.createProfileFromThisTurn = createProfileFromThisTurn
 window.filterModalContent = filterModalContent
 window.copyModalContent = copyModalContent
+window.copyClaudeCommand = copyClaudeCommand
 
 // ─── Event listeners ────────────────────────────────────────────────────────
 
