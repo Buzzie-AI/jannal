@@ -1,4 +1,4 @@
-import { state } from './state.js'
+import { state, MAX_TURNS } from './state.js'
 import { renderAll, renderStatus } from './render.js'
 import { renderProfileSelector } from './profiles.js'
 
@@ -42,6 +42,10 @@ export function connect() {
 
     if (data.type === 'request') {
       state.turns.push(data)
+      // Evict oldest turns to keep memory bounded
+      if (state.turns.length > MAX_TURNS) {
+        state.turns.splice(0, state.turns.length - MAX_TURNS)
+      }
       state.selectedTurn = state.turns.length - 1
       renderAll()
     }
