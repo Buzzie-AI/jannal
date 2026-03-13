@@ -4,7 +4,7 @@
 
 Jannal sits between your AI tools and the Anthropic API. It intercepts every request, visualizes how your context window is being used, and lets you filter out tools you don't need — saving tokens and money.
 
-Works with Claude Code, Cursor, or anything that speaks the Anthropic Messages API.
+Works with Claude Code and any tool that speaks the Anthropic Messages API. [Cursor support is pending](#cursor-support).
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -70,6 +70,21 @@ Three phases: instant char-based estimates, then exact counts via the `count_tok
 ### Cost per turn
 Pricing for all Claude models, updated to current rates. See input cost, output cost, and total per turn. Session cost accumulates in the header.
 
+## Cursor support
+
+**Current status:** Cursor IDE does not yet support overriding the Anthropic base URL. Unlike OpenAI models (which have a base URL override in Settings → Models), Anthropic models always send requests directly to `api.anthropic.com`, so Jannal cannot intercept them today.
+
+**When Cursor adds Anthropic base URL override**, Jannal will work with zero code changes. You would:
+
+1. Start Jannal: `npm start`
+2. In Cursor Settings → Models, enable "Override Anthropic Base URL" (when available)
+3. Set the base URL to `http://localhost:4455`
+4. Open `http://localhost:4455` in your browser to use the Inspector
+
+**If Cursor's requests originate from cloud infrastructure** (and cannot reach localhost), you would need to expose Jannal via a tunnel (e.g. [ngrok](https://ngrok.com), [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/), or [Tailscale Funnel](https://tailscale.com/kb/1243/funnel/)) and use that public URL as the override.
+
+Track Cursor's progress on this feature: [Override Anthropic Base URL](https://forum.cursor.com/t/override-anthropic-base-url/5355).
+
 ## Configuration
 
 | Environment variable | Default | Description |
@@ -116,6 +131,7 @@ The backend is one file (`server.js`). The frontend is split into 7 focused modu
 ## Limitations
 
 - Only supports the Anthropic Messages API (not OpenAI, Google, etc. — yet)
+- Cursor IDE is not yet supported — Cursor lacks an Anthropic base URL override setting (see [Cursor support](#cursor-support))
 - Per-segment token counts are proportionally scaled estimates, not exact per-field counts
 - Tool filtering modifies the request body, which means Claude won't know those tools exist — this is the point, but be aware
 - Profiles are stored in a local JSON file, not synced across machines
