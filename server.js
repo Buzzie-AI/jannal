@@ -4,7 +4,7 @@ const { WebSocketServer } = require("ws");
 const fs = require("fs");
 const path = require("path");
 
-const PORT = process.env.JANNAL_PORT || 3456;
+const PORT = process.env.JANNAL_PORT || 4455;
 const ANTHROPIC_HOST = "api.anthropic.com";
 
 // ─── WebSocket clients ───────────────────────────────────────────────────────
@@ -365,13 +365,37 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // ── Serve Inspector UI ──
+  // ── Serve Inspector UI (static files from public/) ──
   if (req.method === "GET") {
+    // Serve static assets (Vite build output)
+    const MIME_TYPES = {
+      ".html": "text/html", ".js": "application/javascript", ".css": "text/css",
+      ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png",
+      ".ico": "image/x-icon", ".woff": "font/woff", ".woff2": "font/woff2",
+    };
+
     if (req.url === "/" || req.url === "/index.html") {
       res.writeHead(200, { "Content-Type": "text/html" });
       fs.createReadStream(path.join(__dirname, "public", "index.html")).pipe(res);
       return;
     }
+
+    // Serve other static files from public/ (JS, CSS, assets)
+    const urlPath = req.url.split("?")[0]; // strip query params
+    if (urlPath.startsWith("/assets/") || urlPath.endsWith(".js") || urlPath.endsWith(".css") || urlPath.endsWith(".svg") || urlPath.endsWith(".ico")) {
+      const filePath = path.join(__dirname, "public", urlPath);
+      const safePath = path.resolve(filePath);
+      if (!safePath.startsWith(path.join(__dirname, "public"))) {
+        res.writeHead(403); res.end("Forbidden"); return;
+      }
+      if (fs.existsSync(safePath)) {
+        const ext = path.extname(safePath);
+        res.writeHead(200, { "Content-Type": MIME_TYPES[ext] || "application/octet-stream" });
+        fs.createReadStream(safePath).pipe(res);
+        return;
+      }
+    }
+
     if (req.url === "/health") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "ok", turns: turnCounter, clients: wsClients.size }));
@@ -671,7 +695,7 @@ wss.on("connection", (ws) => {
 server.listen(PORT, () => {
   console.log("");
   console.log("  ┌─────────────────────────────────────────────┐");
-  console.log("  │   Context Window Manager — Inspector Proxy   │");
+  console.log("  │            Jannal — Inspector Proxy           │");
   console.log("  └─────────────────────────────────────────────┘");
   console.log("");
   console.log(`  Inspector UI:  http://localhost:${PORT}`);

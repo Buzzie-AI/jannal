@@ -22,6 +22,7 @@ Works with Claude Code, Cursor, or anything that speaks the Anthropic Messages A
 git clone https://github.com/Buzzie-AI/jannal.git
 cd jannal
 npm install
+npm run build
 npm start
 ```
 
@@ -29,18 +30,18 @@ Then start your AI tool pointing at the proxy:
 
 ```bash
 # Claude Code
-ANTHROPIC_BASE_URL=http://localhost:3456 claude
+ANTHROPIC_BASE_URL=http://localhost:4455 claude
 
 # Or any tool that supports ANTHROPIC_BASE_URL
-ANTHROPIC_BASE_URL=http://localhost:3456 your-tool
+ANTHROPIC_BASE_URL=http://localhost:4455 your-tool
 ```
 
-Open `http://localhost:3456` in your browser to see the Inspector.
+Open `http://localhost:4455` in your browser to see the Inspector.
 
 ## How it works
 
 ```
-Your AI Tool  →  Jannal (localhost:3456)  →  api.anthropic.com
+Your AI Tool  →  Jannal (localhost:4455)  →  api.anthropic.com
                       ↓
               Inspector UI (browser)
 ```
@@ -73,21 +74,44 @@ Pricing for all Claude models, updated to current rates. See input cost, output 
 
 | Environment variable | Default | Description |
 |---|---|---|
-| `JANNAL_PORT` | `3456` | Port for the proxy and Inspector UI |
+| `JANNAL_PORT` | `4455` | Port for the proxy and Inspector UI |
+
+## Development
+
+```bash
+# Terminal 1: start the proxy server
+npm run dev:server
+
+# Terminal 2: start Vite dev server with hot reload
+npm run dev:ui
+```
+
+Open `http://localhost:5173` for the dev UI (auto-proxies API calls to the server on :4455).
 
 ## Project structure
 
 ```
 jannal/
-├── server.js          # Proxy server, token analysis, profile management
-├── public/
-│   └── index.html     # Inspector UI (single file, no build step)
+├── server.js              # Proxy server, token analysis, profile management
+├── vite.config.js         # Vite build + dev proxy config
+├── src/                   # Frontend source (ES modules)
+│   ├── index.html         # HTML shell
+│   ├── main.js            # Entry point
+│   ├── styles.css         # All styles
+│   ├── state.js           # App state + constants
+│   ├── ws.js              # WebSocket connection
+│   ├── api.js             # HTTP API helpers
+│   ├── render.js          # UI rendering (bar, turns, detail)
+│   ├── modal.js           # Modal lifecycle + tools view
+│   ├── profiles.js        # Profile management
+│   └── utils.js           # Formatting + segment helpers
+├── public/                # Vite build output (served by server.js)
 ├── package.json
-├── profiles.json      # Auto-created, stores your filtering profiles
+├── profiles.json          # Auto-created, stores your filtering profiles
 └── README.md
 ```
 
-Two files. No build step. No framework. Just a Node.js server and an HTML file.
+The backend is one file (`server.js`). The frontend is split into 7 focused modules — no framework, just vanilla JS with ES module imports. Vite handles the build.
 
 ## Limitations
 
@@ -98,7 +122,7 @@ Two files. No build step. No framework. Just a Node.js server and an HTML file.
 
 ## Contributing
 
-Issues and PRs welcome. The codebase is intentionally simple — two files, one dependency (`ws`). Keep it that way.
+Issues and PRs welcome. The codebase is intentionally simple — one backend file, seven small frontend modules, and two dependencies (`ws` + `vite`). Keep it that way.
 
 ## License
 

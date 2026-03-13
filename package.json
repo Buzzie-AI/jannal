@@ -4,7 +4,11 @@
   "description": "Intercept, visualize, and optimize LLM context windows. Proxy that sits between your AI tools and the Anthropic API.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "dev:server": "node server.js",
+    "dev:ui": "vite",
+    "build": "vite build",
+    "start": "node server.js",
+    "preview": "vite preview"
   },
   "keywords": [
     "llm",
@@ -27,5 +31,8 @@
   },
   "dependencies": {
     "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "vite": "^8.0.0"
   }
 }
