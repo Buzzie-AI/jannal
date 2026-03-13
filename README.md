@@ -64,11 +64,19 @@ Click any segment to see its complete content — system prompts, tool definitio
 ### Tool filtering profiles
 Open the Tools segment, uncheck the tools you don't need, save as a named profile. Profiles persist across restarts (stored in `profiles.json`). Switch profiles from the header dropdown. An orange "FILTERING" badge reminds you when filtering is active.
 
+**Tool grouping by MCP server** — Tools are grouped by inferred MCP server (e.g. `github`, `filesystem`). Enable or disable an entire server at once with per-group All/None buttons.
+
 ### Accurate token counting
 Three phases: instant char-based estimates, then exact counts via the `count_tokens` API (free, fires in parallel), then ground truth from the response. Per-segment breakdowns are proportionally scaled when exact totals arrive.
 
 ### Cost per turn
 Pricing for all Claude models, updated to current rates. See input cost, output cost, and total per turn. Session cost accumulates in the header.
+
+### Session export & persistence
+Export your session as **JSON** or **CSV** for analysis. Session data (turns, costs, segments) persists across page refreshes via `localStorage` — pick up where you left off.
+
+### Token growth chart
+A sparkline below the context bar shows input tokens per turn over time. Spot conversation bloat at a glance and know when to start a new session.
 
 ## Cursor support
 
@@ -116,17 +124,18 @@ jannal/
 │   ├── state.js           # App state + constants
 │   ├── ws.js              # WebSocket connection
 │   ├── api.js             # HTTP API helpers
-│   ├── render.js          # UI rendering (bar, turns, detail)
-│   ├── modal.js           # Modal lifecycle + tools view
+│   ├── render.js          # UI rendering (bar, turns, detail, token chart)
+│   ├── modal.js           # Modal lifecycle + tools view (grouped by MCP server)
 │   ├── profiles.js        # Profile management
-│   └── utils.js           # Formatting + segment helpers
+│   ├── session.js         # Session export & persistence
+│   └── utils.js           # Formatting + segment helpers + tool grouping
 ├── public/                # Vite build output (served by server.js)
 ├── package.json
 ├── profiles.json          # Auto-created, stores your filtering profiles
 └── README.md
 ```
 
-The backend is one file (`server.js`). The frontend is split into 7 focused modules — no framework, just vanilla JS with ES module imports. Vite handles the build.
+The backend is one file (`server.js`). The frontend is split into focused modules — no framework, just vanilla JS with ES module imports. Vite handles the build.
 
 ## Limitations
 
@@ -138,7 +147,7 @@ The backend is one file (`server.js`). The frontend is split into 7 focused modu
 
 ## Contributing
 
-Issues and PRs welcome. The codebase is intentionally simple — one backend file, seven small frontend modules, and two dependencies (`ws` + `vite`). Keep it that way.
+Issues and PRs welcome. The codebase is intentionally simple — one backend file, small frontend modules, and two dependencies (`ws` + `vite`). Keep it that way.
 
 ## License
 

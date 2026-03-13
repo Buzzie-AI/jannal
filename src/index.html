@@ -41,6 +41,10 @@
       <span class="bar-pct" id="barPct">0%</span>
     </div>
   </div>
+  <div class="token-chart-container" id="tokenChartContainer">
+    <div class="token-chart-label">Token growth</div>
+    <div class="token-chart" id="tokenChart"></div>
+  </div>
 </div>
 
 <!-- Main -->
@@ -48,7 +52,16 @@
   <div class="panel turns-panel">
     <div class="panel-header">
       <span>Turns</span>
-      <button id="clearBtn" style="background:none;border:none;color:var(--text3);font-size:10px;cursor:pointer;font-family:inherit">Clear</button>
+      <div class="panel-actions">
+        <div class="export-dropdown">
+          <button id="exportBtn" class="panel-btn" title="Export session">Export</button>
+          <div id="exportMenu" class="export-menu">
+            <button class="export-option" data-format="json">JSON</button>
+            <button class="export-option" data-format="csv">CSV</button>
+          </div>
+        </div>
+        <button id="clearBtn" class="panel-btn">Clear</button>
+      </div>
     </div>
     <div class="panel-body" id="turnList">
       <div class="empty">

@@ -2,8 +2,9 @@ import './styles.css'
 import { state } from './state.js'
 import { connect } from './ws.js'
 import { renderAll, renderContextBar, renderTurnList, renderDetail } from './render.js'
-import { openModal, closeModal, setModalView, toggleAllTools, onToolToggle, saveCurrentAsProfile, filterModalContent, copyModalContent } from './modal.js'
+import { openModal, closeModal, setModalView, toggleAllTools, toggleGroupTools, onToolToggle, saveCurrentAsProfile, filterModalContent, copyModalContent } from './modal.js'
 import { onProfileChange } from './profiles.js'
+import { restoreSession, exportSessionJSON, exportSessionCSV, downloadExport, persistSession } from './session.js'
 
 // ─── Turn selection & clearing ──────────────────────────────────────────────
 
@@ -12,12 +13,36 @@ function selectTurn(i) {
   renderContextBar()
   renderTurnList()
   renderDetail()
+  persistSession(state)
 }
 
 function clearTurns() {
   state.turns = []
   state.selectedTurn = null
   renderAll()
+  persistSession(state)
+}
+
+function exportSession() {
+  if (state.turns.length === 0) return
+  const menu = document.getElementById('exportMenu')
+  menu?.classList.toggle('open')
+}
+
+function doExportJSON() {
+  if (state.turns.length === 0) return
+  const content = exportSessionJSON(state)
+  const ts = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')
+  downloadExport(content, `jannal-session-${ts}.json`)
+  document.getElementById('exportMenu')?.classList.remove('open')
+}
+
+function doExportCSV() {
+  if (state.turns.length === 0) return
+  const content = exportSessionCSV(state)
+  const ts = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')
+  downloadExport(content, `jannal-session-${ts}.csv`)
+  document.getElementById('exportMenu')?.classList.remove('open')
 }
 
 // ─── Expose functions to inline onclick handlers ────────────────────────────
@@ -30,6 +55,7 @@ window.selectTurn = selectTurn
 window.clearTurns = clearTurns
 window.onProfileChange = onProfileChange
 window.toggleAllTools = toggleAllTools
+window.toggleGroupTools = toggleGroupTools
 window.onToolToggle = onToolToggle
 window.saveCurrentAsProfile = saveCurrentAsProfile
 window.filterModalContent = filterModalContent
@@ -42,6 +68,23 @@ document.getElementById('profileSelect').addEventListener('change', (e) => {
 })
 
 document.getElementById('clearBtn').addEventListener('click', clearTurns)
+document.getElementById('exportBtn').addEventListener('click', exportSession)
+
+document.getElementById('exportMenu')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.export-option')
+  if (btn) {
+    if (btn.dataset.format === 'json') doExportJSON()
+    else if (btn.dataset.format === 'csv') doExportCSV()
+  }
+})
+
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('exportMenu')
+  const dropdown = document.querySelector('.export-dropdown')
+  if (menu?.classList.contains('open') && dropdown && !dropdown.contains(e.target)) {
+    menu.classList.remove('open')
+  }
+})
 
 document.getElementById('modalOverlay').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) closeModal()
@@ -71,5 +114,6 @@ document.addEventListener('keydown', (e) => {
 
 // ─── Init ───────────────────────────────────────────────────────────────────
 
+restoreSession(state)
 connect()
 renderAll()

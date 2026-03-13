@@ -45,3 +45,32 @@ export function isToolEnabled(toolName, profile, isAllTools) {
 export function estimateToolTokens(tool) {
   return Math.ceil(JSON.stringify(tool).length / 3.8)
 }
+
+/** Infer MCP server name from tool name (e.g. "github_search_repos" → "github") */
+export function getToolServer(tool) {
+  const name = tool?.name || ''
+  // MCP tools often use server_tool or serverTool naming
+  const match = name.match(/^([a-zA-Z0-9]+)[_\/]/)
+  if (match) return match[1].toLowerCase()
+  // Single-word tools go to "Other"
+  return 'other'
+}
+
+/** Group tools by inferred MCP server. Returns Map<serverName, tools[]> */
+export function groupToolsByServer(tools) {
+  const groups = new Map()
+  for (const tool of tools) {
+    const server = getToolServer(tool)
+    if (!groups.has(server)) groups.set(server, [])
+    groups.get(server).push(tool)
+  }
+  // Sort: "other" last, then alphabetically
+  const sorted = new Map()
+  const keys = [...groups.keys()].sort((a, b) => {
+    if (a === 'other') return 1
+    if (b === 'other') return -1
+    return a.localeCompare(b)
+  })
+  for (const k of keys) sorted.set(k, groups.get(k))
+  return sorted
+}

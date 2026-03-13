@@ -1,5 +1,5 @@
 import { state, modalState } from './state.js'
-import { getSegColor, getSegLabel, fmt, escapeHtml, isToolEnabled, estimateToolTokens } from './utils.js'
+import { getSegColor, getSegLabel, fmt, escapeHtml, isToolEnabled, estimateToolTokens, groupToolsByServer, getToolServer } from './utils.js'
 import { fetchContent } from './api.js'
 import { saveProfile } from './profiles.js'
 
@@ -117,6 +117,7 @@ function renderToolsView(body) {
 
   const profile = state.profiles[state.activeProfile]
   const isAllTools = state.activeProfile === 'All Tools'
+  const groups = groupToolsByServer(tools)
 
   let html = '<div class="modal-tools">'
 
@@ -129,19 +130,38 @@ function renderToolsView(body) {
   html += `<button class="btn-secondary" onclick="toggleAllTools(false)" style="padding:3px 8px;border-radius:4px;font-size:10px">None</button>`
   html += `</div></div>`
 
-  // Tool cards
-  for (const tool of tools) {
-    const enabled = isToolEnabled(tool.name, profile, isAllTools)
-    const toolTokens = estimateToolTokens(tool)
-    const desc = (tool.description || '').slice(0, 120)
-    html += `<div class="tool-card">`
-    html += `<input type="checkbox" data-tool="${escapeHtml(tool.name)}" ${enabled ? 'checked' : ''} onchange="onToolToggle()">`
-    html += `<div class="tool-card-info">`
-    html += `<div class="tool-card-name">${escapeHtml(tool.name)}</div>`
-    if (desc) html += `<div class="tool-card-desc">${escapeHtml(desc)}</div>`
+  // Tool groups by MCP server
+  for (const [serverName, serverTools] of groups) {
+    const displayName = serverName === 'other' ? 'Other' : serverName.charAt(0).toUpperCase() + serverName.slice(1)
+    const groupTokens = serverTools.reduce((s, t) => s + estimateToolTokens(t), 0)
+    const groupEnabled = serverTools.filter(t => isToolEnabled(t.name, profile, isAllTools)).length
+
+    html += `<div class="tool-group" data-server="${escapeHtml(serverName)}">`
+    html += `<div class="tool-group-header">`
+    html += `<div class="tool-group-title">`
+    html += `<span class="tool-group-name">${escapeHtml(displayName)}</span>`
+    html += `<span class="tool-group-meta">${serverTools.length} tools · ~${fmt(groupTokens)} tok</span>`
     html += `</div>`
-    html += `<div class="tool-card-tokens">~${fmt(toolTokens)} tok</div>`
-    html += `</div>`
+    html += `<div class="tool-group-actions">`
+    html += `<button class="btn-secondary" onclick="toggleGroupTools('${escapeHtml(serverName)}', true)" style="padding:2px 6px;font-size:9px">All</button>`
+    html += `<button class="btn-secondary" onclick="toggleGroupTools('${escapeHtml(serverName)}', false)" style="padding:2px 6px;font-size:9px">None</button>`
+    html += `</div></div>`
+    html += `<div class="tool-group-body">`
+
+    for (const tool of serverTools) {
+      const enabled = isToolEnabled(tool.name, profile, isAllTools)
+      const toolTokens = estimateToolTokens(tool)
+      const desc = (tool.description || '').slice(0, 120)
+      html += `<div class="tool-card" data-tool-name="${escapeHtml(tool.name)}">`
+      html += `<input type="checkbox" data-tool="${escapeHtml(tool.name)}" data-server="${escapeHtml(serverName)}" ${enabled ? 'checked' : ''} onchange="onToolToggle()">`
+      html += `<div class="tool-card-info">`
+      html += `<div class="tool-card-name">${escapeHtml(tool.name)}</div>`
+      if (desc) html += `<div class="tool-card-desc">${escapeHtml(desc)}</div>`
+      html += `</div>`
+      html += `<div class="tool-card-tokens">~${fmt(toolTokens)} tok</div>`
+      html += `</div>`
+    }
+    html += `</div></div>`
   }
 
   // Savings estimate
@@ -157,6 +177,13 @@ function renderToolsView(body) {
   body.innerHTML = html
 
   // Trigger savings calculation
+  onToolToggle()
+}
+
+export function toggleGroupTools(serverName, enable) {
+  document.querySelectorAll(`.modal-tools input[data-server="${serverName}"]`).forEach(cb => {
+    cb.checked = enable
+  })
   onToolToggle()
 }
 
@@ -238,12 +265,18 @@ export function filterModalContent() {
     return
   }
 
-  // If in tools view, filter tool cards
+  // If in tools view, filter tool cards and groups
   if (modalState.view === 'tools') {
-    document.querySelectorAll('.tool-card').forEach(card => {
-      const name = card.querySelector('.tool-card-name')?.textContent?.toLowerCase() || ''
-      const desc = card.querySelector('.tool-card-desc')?.textContent?.toLowerCase() || ''
-      card.style.display = (name.includes(query) || desc.includes(query)) ? 'flex' : 'none'
+    document.querySelectorAll('.tool-group').forEach(group => {
+      let visibleCount = 0
+      group.querySelectorAll('.tool-card').forEach(card => {
+        const name = card.querySelector('.tool-card-name')?.textContent?.toLowerCase() || ''
+        const desc = card.querySelector('.tool-card-desc')?.textContent?.toLowerCase() || ''
+        const match = name.includes(query) || desc.includes(query)
+        card.style.display = match ? 'flex' : 'none'
+        if (match) visibleCount++
+      })
+      group.style.display = visibleCount > 0 ? 'block' : 'none'
     })
     return
   }
