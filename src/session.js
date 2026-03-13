@@ -10,8 +10,8 @@ export function persistSession(state) {
   persistTimeout = setTimeout(() => {
     try {
       const data = {
-        turns: state.turns,
-        selectedTurn: state.selectedTurn,
+        reqs: state.reqs,
+        selectedReq: state.selectedReq,
         savedAt: Date.now(),
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
@@ -27,11 +27,14 @@ export function restoreSession(state) {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return false
     const data = JSON.parse(raw)
-    if (data.turns && Array.isArray(data.turns) && data.turns.length > 0) {
-      state.turns = data.turns
-      state.selectedTurn = data.selectedTurn != null && data.selectedTurn < state.turns.length
-        ? data.selectedTurn
-        : state.turns.length - 1
+    // Support both old (turns/selectedTurn) and new (reqs/selectedReq) keys
+    const reqs = data.reqs || data.turns
+    const selectedReq = data.selectedReq ?? data.selectedTurn
+    if (reqs && Array.isArray(reqs) && reqs.length > 0) {
+      state.reqs = reqs
+      state.selectedReq = selectedReq != null && selectedReq < state.reqs.length
+        ? selectedReq
+        : state.reqs.length - 1
       return true
     }
   } catch (e) {
@@ -42,11 +45,11 @@ export function restoreSession(state) {
 
 export function exportSessionJSON(state) {
   let totalCost = 0
-  const turns = state.turns.map(t => {
+  const reqs = state.reqs.map(t => {
     const cost = t.actualCost?.totalCost ?? t.estimatedCost?.totalCost ?? 0
     totalCost += cost
     return {
-      turn: t.turn,
+      request: t.turn,
       model: t.model,
       timestamp: t.timestamp,
       inputTokens: t.actualUsage?.input_tokens ?? t.totalEstimatedTokens,
@@ -57,16 +60,16 @@ export function exportSessionJSON(state) {
   })
   const data = {
     exportedAt: new Date().toISOString(),
-    turnCount: turns.length,
+    requestCount: reqs.length,
     totalCost,
-    turns,
+    requests: reqs,
   }
   return JSON.stringify(data, null, 2)
 }
 
 export function exportSessionCSV(state) {
-  const headers = ['Turn', 'Model', 'Timestamp', 'Input Tokens', 'Output Tokens', 'Cost ($)']
-  const rows = state.turns.map(t => [
+  const headers = ['Request', 'Model', 'Timestamp', 'Input Tokens', 'Output Tokens', 'Cost ($)']
+  const rows = state.reqs.map(t => [
     t.turn,
     t.model,
     new Date(t.timestamp).toISOString(),

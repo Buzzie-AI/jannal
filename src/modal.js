@@ -6,9 +6,9 @@ import { saveProfile } from './profiles.js'
 // ─── Modal ──────────────────────────────────────────────────────────────────
 
 export async function openModal(segIndex) {
-  const turn = state.turns[state.selectedTurn]
-  if (!turn) return
-  const seg = turn.segments[segIndex]
+  const req = state.reqs[state.selectedReq]
+  if (!req) return
+  const seg = req.segments[segIndex]
   if (!seg) return
 
   modalState.segment = seg
@@ -27,7 +27,7 @@ export async function openModal(segIndex) {
   const statsHtml = `
     <div class="modal-stat"><div class="modal-stat-value" style="color:${color}">${fmt(seg.tokens)}</div><div class="modal-stat-label">Tokens</div></div>
     <div class="modal-stat"><div class="modal-stat-value">${(seg.charLength || 0).toLocaleString()}</div><div class="modal-stat-label">Chars</div></div>
-    <div class="modal-stat"><div class="modal-stat-value">${((seg.tokens / turn.totalEstimatedTokens) * 100).toFixed(1)}%</div><div class="modal-stat-label">Of total</div></div>
+    <div class="modal-stat"><div class="modal-stat-value">${((seg.tokens / req.totalEstimatedTokens) * 100).toFixed(1)}%</div><div class="modal-stat-label">Of total</div></div>
   `
   document.getElementById('modalStats').innerHTML = statsHtml
 
@@ -50,14 +50,14 @@ export async function openModal(segIndex) {
 
   // Fetch full content from server via HTTP
   try {
-    const data = await fetchContent(turn.turn, segIndex)
+    const data = await fetchContent(req.turn, segIndex)
     if (data.content) {
       modalState.fullContent = data.content
       if (seg.type === 'tools') {
         try { modalState.parsedTools = JSON.parse(data.content) } catch (e) { modalState.parsedTools = null }
       }
     } else {
-      modalState.fullContent = seg.preview || '(content no longer available — turn may have been evicted)'
+      modalState.fullContent = seg.preview || '(content no longer available — request may have been evicted)'
     }
   } catch (err) {
     console.error('Failed to fetch segment content:', err)
@@ -217,7 +217,7 @@ export function onToolToggle() {
 
   const savingsEl = document.getElementById('toolsSavings')
   if (savingsEl && disabledTokens > 0) {
-    savingsEl.innerHTML = `<div class="savings-banner">Disabling ${tools.length - enabledCount} tools saves ~${fmt(disabledTokens)} tokens per turn</div>`
+    savingsEl.innerHTML = `<div class="savings-banner">Disabling ${tools.length - enabledCount} tools saves ~${fmt(disabledTokens)} tokens per request</div>`
   } else if (savingsEl) {
     savingsEl.innerHTML = ''
   }

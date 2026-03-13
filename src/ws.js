@@ -1,4 +1,4 @@
-import { state, MAX_TURNS } from './state.js'
+import { state, MAX_REQS } from './state.js'
 import { renderAll, renderStatus } from './render.js'
 import { renderProfileSelector } from './profiles.js'
 import { persistSession } from './session.js'
@@ -42,31 +42,31 @@ export function connect() {
     }
 
     if (data.type === 'request') {
-      state.turns.push(data)
-      // Evict oldest turns to keep memory bounded
-      if (state.turns.length > MAX_TURNS) {
-        state.turns.splice(0, state.turns.length - MAX_TURNS)
+      state.reqs.push(data)
+      // Evict oldest requests to keep memory bounded
+      if (state.reqs.length > MAX_REQS) {
+        state.reqs.splice(0, state.reqs.length - MAX_REQS)
       }
-      state.selectedTurn = state.turns.length - 1
+      state.selectedReq = state.reqs.length - 1
       renderAll()
       persistSession(state)
     }
 
     if (data.type === 'token_count_update') {
-      const turn = state.turns.find(t => t.turn === data.turn)
-      if (turn) {
-        turn.exactInputTokens = data.exactInputTokens
-        turn.segments = data.segments
-        turn.totalEstimatedTokens = data.exactInputTokens
-        turn.estimatedCost = data.estimatedCost
-        turn.tokenCountSource = 'count_tokens'
+      const req = state.reqs.find(t => t.turn === data.turn)
+      if (req) {
+        req.exactInputTokens = data.exactInputTokens
+        req.segments = data.segments
+        req.totalEstimatedTokens = data.exactInputTokens
+        req.estimatedCost = data.estimatedCost
+        req.tokenCountSource = 'count_tokens'
         renderAll()
         persistSession(state)
       }
     }
 
     if (data.type === 'response_complete') {
-      const latest = state.turns[state.turns.length - 1]
+      const latest = state.reqs[state.reqs.length - 1]
       if (latest) {
         latest.actualUsage = data.usage
         latest.stopReason = data.stopReason
