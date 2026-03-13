@@ -55,10 +55,8 @@
       "category": "public.app-category.developer-tools",
       "icon": "build/icon.icns",
       "darkModeSupport": true,
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
     },
     "dmg": {
       "title": "Jannal",
@@ -79,13 +77,6 @@
       "public/**/*",
       "node_modules/**/*",
       "package.json"
-    ],
-    "extraFiles": [
-      {
-        "from": "profiles.json",
-        "to": "profiles.json",
-        "filter": ["**/*"]
-      }
     ],
     "asar": true
   }
