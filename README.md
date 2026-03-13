@@ -1,8 +1,8 @@
-# CWM Proxy
+# Jannal
 
 **See what's eating your context window. Then fix it.**
 
-CWM Proxy sits between your AI tools and the Anthropic API. It intercepts every request, visualizes how your context window is being used, and lets you filter out tools you don't need — saving tokens and money.
+Jannal sits between your AI tools and the Anthropic API. It intercepts every request, visualizes how your context window is being used, and lets you filter out tools you don't need — saving tokens and money.
 
 Works with Claude Code, Cursor, or anything that speaks the Anthropic Messages API.
 
@@ -14,13 +14,13 @@ Works with Claude Code, Cursor, or anything that speaks the Anthropic Messages A
 
 **Cost tracking** — See the cost of every turn, with per-model pricing (Opus, Sonnet, Haiku). Session cost accumulates in the header so you always know what you're spending. Uses the official `count_tokens` API for accurate counts before the response even finishes.
 
-**Filter tools** — The killer feature. If you're running Claude Code with 40+ MCP tools defined, half of them are probably irrelevant to what you're doing right now. CWM Proxy strips them from the request before it hits the API. Create named profiles ("Coding Only", "Browser Automation") and switch between them from the UI.
+**Filter tools** — The killer feature. If you're running Claude Code with 40+ MCP tools defined, half of them are probably irrelevant to what you're doing right now. Jannal strips them from the request before it hits the API. Create named profiles ("Coding Only", "Browser Automation") and switch between them from the UI.
 
 ## Quick start
 
 ```bash
-git clone https://github.com/ArvindNaidu/cwm-proxy.git
-cd cwm-proxy
+git clone https://github.com/Buzzie-AI/jannal.git
+cd jannal
 npm install
 npm start
 ```
@@ -40,7 +40,7 @@ Open `http://localhost:3456` in your browser to see the Inspector.
 ## How it works
 
 ```
-Your AI Tool  →  CWM Proxy (localhost:3456)  →  api.anthropic.com
+Your AI Tool  →  Jannal (localhost:3456)  →  api.anthropic.com
                       ↓
               Inspector UI (browser)
 ```
@@ -73,12 +73,12 @@ Pricing for all Claude models, updated to current rates. See input cost, output 
 
 | Environment variable | Default | Description |
 |---|---|---|
-| `CWM_PORT` | `3456` | Port for the proxy and Inspector UI |
+| `JANNAL_PORT` | `3456` | Port for the proxy and Inspector UI |
 
 ## Project structure
 
 ```
-cwm-proxy/
+jannal/
 ├── server.js          # Proxy server, token analysis, profile management
 ├── public/
 │   └── index.html     # Inspector UI (single file, no build step)

@@ -4,7 +4,7 @@ const { WebSocketServer } = require("ws");
 const fs = require("fs");
 const path = require("path");
 
-const PORT = process.env.CWM_PORT || 3456;
+const PORT = process.env.JANNAL_PORT || 3456;
 const ANTHROPIC_HOST = "api.anthropic.com";
 
 // ─── WebSocket clients ───────────────────────────────────────────────────────

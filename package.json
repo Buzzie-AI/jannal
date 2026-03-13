@@ -1,5 +1,5 @@
 {
-  "name": "cwm-proxy",
+  "name": "jannal",
   "version": "0.1.0",
   "description": "Intercept, visualize, and optimize LLM context windows. Proxy that sits between your AI tools and the Anthropic API.",
   "main": "server.js",
@@ -20,7 +20,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ArvindNaidu/cwm-proxy"
+    "url": "https://github.com/Buzzie-AI/jannal"
   },
   "engines": {
     "node": ">=18.0.0"
