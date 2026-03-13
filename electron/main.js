@@ -22,7 +22,7 @@ let activeProfile = 'All Tools'
 function startServer() {
   const serverPath = IS_DEV
     ? path.join(__dirname, '..', 'server.js')
-    : path.join(process.resourcesPath, 'app', 'server.js')
+    : path.join(process.resourcesPath, 'app.asar.unpacked', 'server.js')
 
   serverProcess = fork(serverPath, [], {
     env: { ...process.env, JANNAL_PORT: String(PORT) },
@@ -148,8 +148,7 @@ function createWindow() {
     height: 860,
     minWidth: 800,
     minHeight: 500,
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 16 },
+    titleBarStyle: 'default',
     backgroundColor: '#0a0a18',
     show: false,
     webPreferences: {
@@ -161,6 +160,7 @@ function createWindow() {
   mainWindow.loadURL(`http://localhost:${PORT}`)
 
   mainWindow.once('ready-to-show', () => {
+    if (process.platform === 'darwin') app.dock.show()
     mainWindow.show()
   })
 
@@ -174,6 +174,7 @@ function createWindow() {
     if (!app.isQuitting) {
       e.preventDefault()
       mainWindow.hide()
+      if (process.platform === 'darwin') app.dock.hide()
     }
   })
 
@@ -190,41 +191,31 @@ function createTray() {
   tray = new Tray(icon)
   tray.setToolTip('Jannal — Context Window Inspector')
 
-  // Click tray icon → show/hide inspector window
-  tray.on('click', () => {
-    if (mainWindow && mainWindow.isVisible()) {
-      mainWindow.hide()
-    } else {
-      createWindow()
-    }
-  })
-
   rebuildTrayMenu()
 }
 
 function createTrayIcon() {
-  // Create a simple "J" icon as a template image for macOS menu bar
-  // Template images are automatically colored by macOS (dark/light mode)
+  // macOS template images must be black + alpha only (no color).
+  // Draw a "J" glyph as a 22x22 monochrome icon.
   const size = 22
   const canvas = Buffer.alloc(size * size * 4, 0) // RGBA
 
-  // Draw a simple "J" shape (pixel art style for 22x22)
   const pixels = [
-    // Top bar of J (row 4-5, cols 7-16)
+    // Top bar of J (rows 4-5, cols 7-16)
     ...range(4, 6).flatMap(r => range(7, 17).map(c => [r, c])),
     // Stem of J (rows 6-14, cols 11-14)
     ...range(6, 15).flatMap(r => range(11, 15).map(c => [r, c])),
     // Bottom curve of J (rows 15-16, cols 6-14)
     ...range(15, 17).flatMap(r => range(6, 14).map(c => [r, c])),
-    // Left hook (rows 13-14, cols 4-6)
+    // Left hook (rows 13-16, cols 4-6)
     ...range(13, 17).flatMap(r => range(4, 7).map(c => [r, c])),
   ]
 
   for (const [r, c] of pixels) {
     const idx = (r * size + c) * 4
-    canvas[idx] = 255     // R
-    canvas[idx + 1] = 255 // G
-    canvas[idx + 2] = 255 // B
+    canvas[idx] = 0       // R (black — macOS recolors template images)
+    canvas[idx + 1] = 0   // G
+    canvas[idx + 2] = 0   // B
     canvas[idx + 3] = 255 // A
   }
 
@@ -292,12 +283,6 @@ function rebuildTrayMenu() {
 
   tray.setContextMenu(contextMenu)
 
-  // Update tray title (shows next to icon on macOS)
-  if (isFiltering) {
-    tray.setTitle(activeProfile, { fontType: 'monospacedDigit' })
-  } else {
-    tray.setTitle('')
-  }
 }
 
 // Poll server for profile changes (in case changed from the web UI)
@@ -448,6 +433,20 @@ app.setAboutPanelOptions({
 // Hide dock icon — Jannal lives in the menu bar
 if (process.platform === 'darwin') {
   app.dock.hide()
+}
+
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      mainWindow.show()
+      mainWindow.focus()
+    } else {
+      createWindow()
+    }
+  })
 }
 
 app.whenReady().then(async () => {

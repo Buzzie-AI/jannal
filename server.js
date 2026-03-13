@@ -382,7 +382,7 @@ const server = http.createServer((req, res) => {
 
     // Serve other static files from public/ (JS, CSS, assets)
     const urlPath = req.url.split("?")[0]; // strip query params
-    if (urlPath.startsWith("/assets/") || urlPath.endsWith(".js") || urlPath.endsWith(".css") || urlPath.endsWith(".svg") || urlPath.endsWith(".ico")) {
+    if (urlPath.startsWith("/assets/") || urlPath.endsWith(".js") || urlPath.endsWith(".css") || urlPath.endsWith(".svg") || urlPath.endsWith(".ico") || urlPath.endsWith(".png")) {
       const filePath = path.join(__dirname, "public", urlPath);
       const safePath = path.resolve(filePath);
       if (!safePath.startsWith(path.join(__dirname, "public"))) {

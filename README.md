@@ -8,6 +8,8 @@ Works with Claude Code and any tool that speaks the Anthropic Messages API. [Cur
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
+![Jannal Screenshot](src/public/jannal-1.png)
+
 ## What it does
 
 **Inspect** — Watch every API request in real time. See exactly how many tokens go to the system prompt, tool definitions, conversation history, and tool results. The context bar shows you at a glance where your tokens are going.
