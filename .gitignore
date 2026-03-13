@@ -1,0 +1,4 @@
+node_modules/
+profiles.json
+.DS_Store
+*.log
