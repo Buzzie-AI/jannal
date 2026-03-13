@@ -145,6 +145,10 @@ The backend is one file (`server.js`). The frontend is split into focused module
 - Tool filtering modifies the request body, which means Claude won't know those tools exist — this is the point, but be aware
 - Profiles are stored in a local JSON file, not synced across machines
 
+## Company-ready roadmap
+
+See [docs/COMPANY_READY_ARCHITECTURE.md](docs/COMPANY_READY_ARCHITECTURE.md) for the high-level architecture plan for team and enterprise features: profile export/import, budget alerts, audit log, cost allocation tags, and central dashboard.
+
 ## Contributing
 
 Issues and PRs welcome. The codebase is intentionally simple — one backend file, small frontend modules, and two dependencies (`ws` + `vite`). Keep it that way.
