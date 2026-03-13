@@ -1,6 +1,7 @@
 import { state, MAX_TURNS } from './state.js'
 import { renderAll, renderStatus } from './render.js'
 import { renderProfileSelector } from './profiles.js'
+import { persistSession } from './session.js'
 
 // ─── WebSocket ──────────────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ export function connect() {
       }
       state.selectedTurn = state.turns.length - 1
       renderAll()
+      persistSession(state)
     }
 
     if (data.type === 'token_count_update') {
@@ -59,6 +61,7 @@ export function connect() {
         turn.estimatedCost = data.estimatedCost
         turn.tokenCountSource = 'count_tokens'
         renderAll()
+        persistSession(state)
       }
     }
 
@@ -69,6 +72,7 @@ export function connect() {
         latest.stopReason = data.stopReason
         if (data.cost) latest.actualCost = data.cost
         renderAll()
+        persistSession(state)
       }
     }
 

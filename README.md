@@ -4,7 +4,7 @@
 
 Jannal sits between your AI tools and the Anthropic API. It intercepts every request, visualizes how your context window is being used, and lets you filter out tools you don't need — saving tokens and money.
 
-Works with Claude Code, Cursor, or anything that speaks the Anthropic Messages API.
+Works with Claude Code and any tool that speaks the Anthropic Messages API. [Cursor support is pending](#cursor-support).
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -64,11 +64,34 @@ Click any segment to see its complete content — system prompts, tool definitio
 ### Tool filtering profiles
 Open the Tools segment, uncheck the tools you don't need, save as a named profile. Profiles persist across restarts (stored in `profiles.json`). Switch profiles from the header dropdown. An orange "FILTERING" badge reminds you when filtering is active.
 
+**Tool grouping by MCP server** — Tools are grouped by inferred MCP server (e.g. `github`, `filesystem`). Enable or disable an entire server at once with per-group All/None buttons.
+
 ### Accurate token counting
 Three phases: instant char-based estimates, then exact counts via the `count_tokens` API (free, fires in parallel), then ground truth from the response. Per-segment breakdowns are proportionally scaled when exact totals arrive.
 
 ### Cost per turn
 Pricing for all Claude models, updated to current rates. See input cost, output cost, and total per turn. Session cost accumulates in the header.
+
+### Session export & persistence
+Export your session as **JSON** or **CSV** for analysis. Session data (turns, costs, segments) persists across page refreshes via `localStorage` — pick up where you left off.
+
+### Token growth chart
+A sparkline below the context bar shows input tokens per turn over time. Spot conversation bloat at a glance and know when to start a new session.
+
+## Cursor support
+
+**Current status:** Cursor IDE does not yet support overriding the Anthropic base URL. Unlike OpenAI models (which have a base URL override in Settings → Models), Anthropic models always send requests directly to `api.anthropic.com`, so Jannal cannot intercept them today.
+
+**When Cursor adds Anthropic base URL override**, Jannal will work with zero code changes. You would:
+
+1. Start Jannal: `npm start`
+2. In Cursor Settings → Models, enable "Override Anthropic Base URL" (when available)
+3. Set the base URL to `http://localhost:4455`
+4. Open `http://localhost:4455` in your browser to use the Inspector
+
+**If Cursor's requests originate from cloud infrastructure** (and cannot reach localhost), you would need to expose Jannal via a tunnel (e.g. [ngrok](https://ngrok.com), [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/), or [Tailscale Funnel](https://tailscale.com/kb/1243/funnel/)) and use that public URL as the override.
+
+Track Cursor's progress on this feature: [Override Anthropic Base URL](https://forum.cursor.com/t/override-anthropic-base-url/5355).
 
 ## Configuration
 
@@ -101,28 +124,30 @@ jannal/
 │   ├── state.js           # App state + constants
 │   ├── ws.js              # WebSocket connection
 │   ├── api.js             # HTTP API helpers
-│   ├── render.js          # UI rendering (bar, turns, detail)
-│   ├── modal.js           # Modal lifecycle + tools view
+│   ├── render.js          # UI rendering (bar, turns, detail, token chart)
+│   ├── modal.js           # Modal lifecycle + tools view (grouped by MCP server)
 │   ├── profiles.js        # Profile management
-│   └── utils.js           # Formatting + segment helpers
+│   ├── session.js         # Session export & persistence
+│   └── utils.js           # Formatting + segment helpers + tool grouping
 ├── public/                # Vite build output (served by server.js)
 ├── package.json
 ├── profiles.json          # Auto-created, stores your filtering profiles
 └── README.md
 ```
 
-The backend is one file (`server.js`). The frontend is split into 7 focused modules — no framework, just vanilla JS with ES module imports. Vite handles the build.
+The backend is one file (`server.js`). The frontend is split into focused modules — no framework, just vanilla JS with ES module imports. Vite handles the build.
 
 ## Limitations
 
 - Only supports the Anthropic Messages API (not OpenAI, Google, etc. — yet)
+- Cursor IDE is not yet supported — Cursor lacks an Anthropic base URL override setting (see [Cursor support](#cursor-support))
 - Per-segment token counts are proportionally scaled estimates, not exact per-field counts
 - Tool filtering modifies the request body, which means Claude won't know those tools exist — this is the point, but be aware
 - Profiles are stored in a local JSON file, not synced across machines
 
 ## Contributing
 
-Issues and PRs welcome. The codebase is intentionally simple — one backend file, seven small frontend modules, and two dependencies (`ws` + `vite`). Keep it that way.
+Issues and PRs welcome. The codebase is intentionally simple — one backend file, small frontend modules, and two dependencies (`ws` + `vite`). Keep it that way.
 
 ## License
 

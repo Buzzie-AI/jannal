@@ -56,11 +56,25 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-s
 .legend-dot { width: 6px; height: 6px; border-radius: 2px; }
 .bar-total { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .bar-pct { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 99px; background: rgba(255,255,255,0.04); }
+.token-chart-container { margin-top: 8px; padding: 8px 12px; border-radius: 6px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); }
+.token-chart-label { font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.token-chart { display: flex; align-items: center; gap: 8px; }
+.token-chart-svg { width: 100%; max-width: 240px; height: 36px; }
+.token-chart-hint { font-size: 10px; color: var(--text3); white-space: nowrap; }
 
 /* Main layout */
 .main { flex: 1; display: flex; overflow: hidden; }
 .panel { display: flex; flex-direction: column; overflow: hidden; }
 .panel-header { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 800; color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+.panel-actions { display: flex; align-items: center; gap: 6px; }
+.panel-btn { background: none; border: none; color: var(--text3); font-size: 10px; cursor: pointer; font-family: inherit; padding: 2px 6px; border-radius: 4px; }
+.panel-btn:hover:not(:disabled) { color: var(--text); background: rgba(255,255,255,0.06); }
+.panel-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.export-dropdown { position: relative; }
+.export-menu { display: none; position: absolute; top: 100%; right: 0; margin-top: 4px; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 4px; min-width: 90px; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.export-menu.open { display: flex; flex-direction: column; gap: 2px; }
+.export-option { padding: 6px 10px; border: none; background: none; color: var(--text); font-size: 11px; cursor: pointer; font-family: inherit; text-align: left; border-radius: 4px; }
+.export-option:hover { background: rgba(255,255,255,0.08); }
 .panel-body { flex: 1; overflow-y: auto; }
 
 /* Turn list */
@@ -184,6 +198,16 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-s
 .modal-tools-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 8px 12px; border-radius: 8px; background: rgba(255,255,255,0.02); }
 .modal-tools-header-left { font-size: 11px; color: var(--text2); }
 .modal-tools-header-left strong { color: var(--text); }
+.tool-group { margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; overflow: hidden; }
+.tool-group-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 12px; background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.tool-group-title { display: flex; flex-direction: column; gap: 2px; }
+.tool-group-name { font-size: 12px; font-weight: 700; color: var(--purple); }
+.tool-group-meta { font-size: 10px; color: var(--text3); }
+.tool-group-actions { display: flex; gap: 4px; }
+.tool-group-body { padding: 8px; }
 .tool-card {
   display: flex; align-items: center; gap: 10px; padding: 8px 12px;
   border-radius: 6px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04);
