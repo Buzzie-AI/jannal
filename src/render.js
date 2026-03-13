@@ -6,8 +6,18 @@ import { getSegColor, getSegLabel, fmt, fmtCost, escapeHtml } from './utils.js'
 export function renderAll() {
   renderStatus()
   renderContextBar()
+  renderTokenChart()
   renderTurnList()
   renderDetail()
+  renderExportButton()
+}
+
+function renderExportButton() {
+  const btn = document.getElementById('exportBtn')
+  if (btn) {
+    btn.disabled = state.turns.length === 0
+    btn.title = state.turns.length === 0 ? 'No data to export' : 'Export session as JSON or CSV'
+  }
 }
 
 export function renderStatus() {
@@ -67,6 +77,47 @@ export function renderContextBar() {
   bt.style.color = fillPct > 95 ? 'var(--red)' : fillPct > 80 ? 'var(--orange)' : 'var(--text)'
   bp.textContent = `${fillPct.toFixed(1)}%`
   bp.style.color = fillPct > 95 ? 'var(--red)' : fillPct > 80 ? 'var(--orange)' : 'var(--text3)'
+}
+
+export function renderTokenChart() {
+  const container = document.getElementById('tokenChartContainer')
+  const chart = document.getElementById('tokenChart')
+  if (!container || !chart) return
+
+  if (state.turns.length < 2) {
+    container.style.display = 'none'
+    return
+  }
+
+  container.style.display = 'block'
+  const turns = state.turns
+  const values = turns.map(t => t.actualUsage?.input_tokens ?? t.totalEstimatedTokens ?? 0)
+  const maxVal = Math.max(...values)
+  const minVal = Math.min(...values)
+  const range = maxVal - minVal || 1
+  const height = 36
+  const width = 200
+
+  // SVG sparkline
+  const points = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * width
+    const y = height - ((v - minVal) / range) * (height - 4) - 2
+    return `${x},${y}`
+  }).join(' ')
+
+  chart.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="token-chart-svg">
+      <polyline
+        fill="none"
+        stroke="var(--cyan)"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        points="${points}"
+      />
+    </svg>
+    <div class="token-chart-hint">${values.length} turns · ${fmt(minVal)} → ${fmt(maxVal)} tokens</div>
+  `
 }
 
 export function renderTurnList() {
