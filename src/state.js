@@ -2,8 +2,8 @@
 
 export const state = {
   connected: false,
-  turns: [],
-  selectedTurn: null,
+  reqs: [],
+  selectedReq: null,
   profiles: {},
   activeProfile: 'All Tools',
 }
@@ -19,7 +19,7 @@ export let modalState = {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-export const MAX_TURNS = 50
+export const MAX_REQS = 50
 
 export const SEGMENT_COLORS = {
   system: '#3B82F6',

@@ -15,6 +15,10 @@
     <div><h1>Jannal</h1></div>
   </div>
   <div class="header-right">
+    <div class="global-search-wrapper">
+      <input class="global-search" type="text" placeholder="Search all requests..." id="globalSearch" />
+      <div class="global-search-results" id="globalSearchResults"></div>
+    </div>
     <select class="profile-select" id="profileSelect">
       <option value="All Tools">All Tools</option>
     </select>
@@ -23,7 +27,7 @@
       <div class="status-dot disconnected" id="statusDot"></div>
       <span id="statusText" style="color:var(--text3)">Connecting...</span>
     </div>
-    <div class="turn-badge" id="turnBadge">Turn 0</div>
+    <div class="req-badge" id="reqBadge">Req 0</div>
     <div class="session-cost" id="sessionCost">$0.0000</div>
   </div>
 </div>
@@ -50,9 +54,9 @@
 
 <!-- Main -->
 <div class="main">
-  <div class="panel turns-panel">
+  <div class="panel reqs-panel">
     <div class="panel-header">
-      <span>Turns</span>
+      <span>Requests</span>
       <div class="panel-actions">
         <div class="export-dropdown">
           <button id="exportBtn" class="panel-btn" title="Export session">Export</button>
@@ -64,7 +68,7 @@
         <button id="clearBtn" class="panel-btn">Clear</button>
       </div>
     </div>
-    <div class="panel-body" id="turnList">
+    <div class="panel-body" id="reqList">
       <div class="empty">
         <div class="empty-icon waiting">&#x1F50D;</div>
         <h2>Waiting for requests...</h2>
@@ -80,8 +84,8 @@
     <div class="panel-body" id="detailBody">
       <div class="empty">
         <div class="empty-icon">&#x1F4CA;</div>
-        <h2>No turn selected</h2>
-        <p>When requests flow through the proxy, each turn will appear on the left. Click one to see the full context breakdown.</p>
+        <h2>No request selected</h2>
+        <p>When requests flow through the proxy, each request will appear on the left. Click one to see the full context breakdown.</p>
       </div>
     </div>
   </div>
