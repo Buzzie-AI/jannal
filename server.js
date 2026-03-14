@@ -38,6 +38,7 @@ function getBudget(model) {
   const m = model.toLowerCase();
 
   if (m.includes("1m")) return 1000000;
+  if (m.includes("opus-4-5") || m.includes("opus-4-6") || m.includes("opus-4.5") || m.includes("opus-4.6")) return 1000000;
   if (m.includes("claude")) return 200000;
 
   for (const [key, budget] of Object.entries(MODEL_BUDGETS)) {
