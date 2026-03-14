@@ -424,7 +424,8 @@ export function renderDetail() {
         html += `<div class="usage-row"><span class="usage-label">${isShadow ? 'Would strip' : 'Stripped groups'}</span><span class="usage-value" style="color:var(--text3);font-size:10px">${escapeHtml(r.stripped_groups.join(', '))}</span></div>`
       }
       if (r.estimated_tokens_saved > 0) {
-        html += `<div class="usage-row"><span class="usage-label">${isShadow ? 'Potential savings' : 'Est. savings'}</span><span class="usage-value" style="color:var(--green)">~${fmt(r.estimated_tokens_saved)} tokens</span></div>`
+        const pct = req.totalEstimatedTokens > 0 ? ((r.estimated_tokens_saved / req.totalEstimatedTokens) * 100).toFixed(1) : '?'
+        html += `<div class="usage-row"><span class="usage-label">${isShadow ? 'Potential savings' : 'Est. savings'}</span><span class="usage-value" style="color:var(--green)">~${fmt(r.estimated_tokens_saved)} tokens (${pct}%)</span></div>`
       }
       if (r.sticky_reused) {
         html += `<div style="margin-top:4px;font-size:9px;color:var(--purple)">Sticky route reused</div>`
