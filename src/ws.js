@@ -84,6 +84,7 @@ export function connect() {
     const data = JSON.parse(event.data)
 
     if (data.type === 'connected') {
+      state.premium = !!data.premium
       if (data.profiles) state.profiles = data.profiles
       if (data.activeProfile) state.activeProfile = data.activeProfile
       if (data.routerMode != null) state.routerMode = data.routerMode

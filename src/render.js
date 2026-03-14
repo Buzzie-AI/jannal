@@ -50,9 +50,16 @@ export function renderStatus() {
   document.getElementById('sessionCost').textContent = fmtCost(totalCost)
   const savedEl = document.getElementById('sessionSaved')
   if (savedEl) {
-    const costStr = totalSavedCost >= 0.01 ? ` (${fmtCost(totalSavedCost)})` : ''
-    savedEl.textContent = `Saved ~${fmt(totalSavedTokens)}${costStr}`
-    savedEl.classList.toggle('has-savings', totalSavedTokens > 0)
+    if (!state.premium) {
+      savedEl.textContent = 'Pro'
+      savedEl.className = 'session-saved premium-locked'
+      savedEl.title = 'Savings intelligence requires Pro'
+    } else {
+      const costStr = totalSavedCost >= 0.01 ? ` (${fmtCost(totalSavedCost)})` : ''
+      savedEl.textContent = `Saved ~${fmt(totalSavedTokens)}${costStr}`
+      savedEl.className = 'session-saved'
+      savedEl.classList.toggle('has-savings', totalSavedTokens > 0)
+    }
   }
 
   // Daily cost (persisted across eviction)
@@ -70,16 +77,30 @@ export function renderStatus() {
   // Router badge
   const badge = document.getElementById('routerBadge')
   if (badge) {
-    const mode = state.routerMode || 'off'
-    const labels = { off: 'Router Off', shadow: 'Router Shadow', auto: 'Router Auto' }
-    badge.textContent = labels[mode] || 'Router'
-    badge.className = `router-badge router-badge--${mode}`
+    if (!state.premium) {
+      badge.textContent = 'Router Pro'
+      badge.className = 'router-badge premium-locked'
+      // Disable popover options
+      const popover = document.getElementById('routerPopover')
+      if (popover) {
+        for (const btn of popover.querySelectorAll('.router-popover-opt')) {
+          btn.classList.add('premium-locked')
+          btn.classList.remove('active')
+        }
+      }
+    } else {
+      const mode = state.routerMode || 'off'
+      const labels = { off: 'Router Off', shadow: 'Router Shadow', auto: 'Router Auto' }
+      badge.textContent = labels[mode] || 'Router'
+      badge.className = `router-badge router-badge--${mode}`
 
-    // Mark active option in popover
-    const popover = document.getElementById('routerPopover')
-    if (popover) {
-      for (const btn of popover.querySelectorAll('.router-popover-opt')) {
-        btn.classList.toggle('active', btn.dataset.mode === mode)
+      // Mark active option in popover
+      const popover = document.getElementById('routerPopover')
+      if (popover) {
+        for (const btn of popover.querySelectorAll('.router-popover-opt')) {
+          btn.classList.toggle('active', btn.dataset.mode === mode)
+          btn.classList.remove('premium-locked')
+        }
       }
     }
   }
@@ -400,7 +421,14 @@ export function renderDetail() {
     html += `</div>`
   }
 
-  // Router decision
+  // Router decision (premium gate)
+  if (!state.premium && !req.router) {
+    // Show locked teaser for non-premium users
+    html += `<div class="router-box premium-locked">`
+    html += `<div class="router-box-title">Router Intelligence</div>`
+    html += `<div class="premium-locked-msg">Intelligent routing, savings analysis, and auto-filtering.<br>Available in Pro.</div>`
+    html += `</div>`
+  }
   if (req.router) {
     const r = req.router
     const modeLabel = r.mode === 'shadow' ? 'Shadow (observe only)' : r.mode === 'auto' ? 'Auto' : r.mode || 'off'

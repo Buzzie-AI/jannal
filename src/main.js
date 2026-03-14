@@ -171,6 +171,7 @@ document.getElementById('routerBadge')?.addEventListener('click', (e) => {
 document.getElementById('routerPopover')?.addEventListener('click', async (e) => {
   const btn = e.target.closest('.router-popover-opt')
   if (!btn) return
+  if (!state.premium) return // Premium required for mode changes
   const mode = btn.dataset.mode
   if (mode === state.routerMode) {
     document.getElementById('routerPopover')?.classList.remove('open')

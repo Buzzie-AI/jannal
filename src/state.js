@@ -6,6 +6,7 @@ export const state = {
   selectedReq: null,
   profiles: {},
   activeProfile: 'All Tools',
+  premium: false,      // set from server on connect
   routerMode: 'off',   // 'off' | 'shadow' | 'auto'
   toolsUsed: new Set(), // tools used across session (for "never used" indicator)
   groups: {},          // groupId → { id, reqIndices, sessions, startTime, endTime }

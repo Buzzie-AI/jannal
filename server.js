@@ -145,10 +145,15 @@ function applyToolFilter(tools, profileName) {
 
 loadProfiles();
 
+// ─── App config ──────────────────────────────────────────────────────────────
+
+const { isPremium, loadAppConfig, getAppConfig } = require("./lib/app-config");
+loadAppConfig();
+
 // ─── Router telemetry ────────────────────────────────────────────────────────
 
 const routerLog = require("./router/log");
-routerLog.initDataDir();
+if (isPremium()) routerLog.initDataDir();
 
 // ─── Router ──────────────────────────────────────────────────────────────────
 
@@ -790,16 +795,37 @@ const server = http.createServer((req, res) => {
 
     // ── API: Router config ──
     if (req.url === "/api/router/config") {
-      jsonResponse(res, 200, router.getRouterConfig());
+      if (!isPremium()) {
+        jsonResponse(res, 200, {
+          premium: false,
+          available: false,
+          effective_mode: "off",
+          locked_reason: "requires_pro",
+        });
+        return;
+      }
+      jsonResponse(res, 200, { premium: true, ...router.getRouterConfig() });
       return;
     }
 
     // ── API: Router status ──
     if (req.url === "/api/router/status") {
+      if (!isPremium()) {
+        jsonResponse(res, 200, {
+          schema_version: 1,
+          premium: false,
+          available: false,
+          effective_mode: "off",
+          locked_reason: "requires_pro",
+          metrics: null,
+        });
+        return;
+      }
       const status = router.getRouterStatus();
       const metrics = routerLog.getMetrics();
       jsonResponse(res, 200, {
         schema_version: 1,
+        premium: true,
         ...status,
         metrics: metrics ? {
           window_event_count: metrics.window?.event_count ?? 0,
@@ -819,6 +845,10 @@ const server = http.createServer((req, res) => {
 
   // ── API: Set router mode ──
   if (req.method === "POST" && req.url === "/api/router/mode") {
+    if (!isPremium()) {
+      jsonResponse(res, 403, { error: "Router mode changes require Pro" });
+      return;
+    }
     readBody(req).then((buf) => {
       try {
         const data = JSON.parse(buf.toString());
@@ -951,39 +981,41 @@ const server = http.createServer((req, res) => {
           `[R${analysis.turn}] ${analysis.model} | ${analysis.segments.length} segs | ~${analysis.totalEstimatedTokens} tokens | $${analysis.estimatedCost.totalCost.toFixed(4)}${filteringInfo ? ` | FILTERED: ${filteringInfo.originalToolCount}→${filteringInfo.filteredToolCount} tools (-${filteringInfo.removedTools.length})` : ""}`
         );
 
-        // Run router prediction (shadow mode: predict but don't filter)
-        try {
-          routerResult = await router.routeRequest({
-            stored: reqStore.get(requestTurn),
-            activeProfile,
-            allToolNames: (parsed.tools || []).map((t) => t.name),
-          });
-          if (routerResult.eligible) {
-            console.log(
-              `  [router] ${routerResult.matched_by} | conf=${routerResult.confidence} | selected=${(routerResult.selected_groups || []).join(",")} | stripped=${(routerResult.stripped_groups || []).join(",") || "none"} | ~${routerResult.estimated_tokens_saved} tokens saved`
-            );
-          } else {
-            console.log(`  [router] skip: ${routerResult.skip_reason}`);
+        // Run router prediction (premium only)
+        if (isPremium()) {
+          try {
+            routerResult = await router.routeRequest({
+              stored: reqStore.get(requestTurn),
+              activeProfile,
+              allToolNames: (parsed.tools || []).map((t) => t.name),
+            });
+            if (routerResult.eligible) {
+              console.log(
+                `  [router] ${routerResult.matched_by} | conf=${routerResult.confidence} | selected=${(routerResult.selected_groups || []).join(",")} | stripped=${(routerResult.stripped_groups || []).join(",") || "none"} | ~${routerResult.estimated_tokens_saved} tokens saved`
+              );
+            } else {
+              console.log(`  [router] skip: ${routerResult.skip_reason}`);
+            }
+          } catch (err) {
+            console.error("  [router] prediction error:", err.message);
           }
-        } catch (err) {
-          console.error("  [router] prediction error:", err.message);
-        }
 
-        // Broadcast router decision to frontend
-        if ("eligible" in routerResult) {
-          broadcast({
-            type: "router_decision",
-            turn: analysis.turn,
-            mode: routerResult.mode,
-            eligible: routerResult.eligible,
-            skip_reason: routerResult.skip_reason ?? null,
-            matched_by: routerResult.matched_by ?? null,
-            confidence: routerResult.confidence ?? null,
-            selected_groups: routerResult.selected_groups ?? null,
-            stripped_groups: routerResult.stripped_groups ?? [],
-            estimated_tokens_saved: routerResult.estimated_tokens_saved ?? 0,
-            sticky_reused: routerResult.sticky_reused ?? false,
-          });
+          // Broadcast router decision to frontend
+          if ("eligible" in routerResult) {
+            broadcast({
+              type: "router_decision",
+              turn: analysis.turn,
+              mode: routerResult.mode,
+              eligible: routerResult.eligible,
+              skip_reason: routerResult.skip_reason ?? null,
+              matched_by: routerResult.matched_by ?? null,
+              confidence: routerResult.confidence ?? null,
+              selected_groups: routerResult.selected_groups ?? null,
+              stripped_groups: routerResult.stripped_groups ?? [],
+              estimated_tokens_saved: routerResult.estimated_tokens_saved ?? 0,
+              sticky_reused: routerResult.sticky_reused ?? false,
+            });
+          }
         }
 
         // Fire count_tokens in parallel for accurate count (non-blocking)
@@ -1113,16 +1145,18 @@ const server = http.createServer((req, res) => {
               conversationGroups.get(stored.sessionHash).lastStopReason = stopReason;
             }
 
-            // Emit router eval event for ALL /messages responses
-            try {
-              const evalEvent = routerLog.buildEvalEvent(
-                { reqId, stored, activeProfile, profiles },
-                routerResult,
-                { stopReason, actualInput, actualOutput, cost, toolsUsed }
-              );
-              routerLog.emitEvalEvent(evalEvent);
-            } catch (err) {
-              console.error("  → [router] eval event error:", err.message);
+            // Emit router eval event (premium only — grouping/stopReason stays free)
+            if (isPremium()) {
+              try {
+                const evalEvent = routerLog.buildEvalEvent(
+                  { reqId, stored, activeProfile, profiles },
+                  routerResult,
+                  { stopReason, actualInput, actualOutput, cost, toolsUsed }
+                );
+                routerLog.emitEvalEvent(evalEvent);
+              } catch (err) {
+                console.error("  → [router] eval event error:", err.message);
+              }
             }
           }
         });
@@ -1152,7 +1186,8 @@ wss.on("connection", (ws) => {
     requests: reqCounter,
     profiles,
     activeProfile,
-    routerMode: routerLog.getConfig().mode,
+    premium: isPremium(),
+    routerMode: isPremium() ? routerLog.getConfig().mode : "off",
   }));
 
   // Handle incoming messages from client
@@ -1195,8 +1230,12 @@ server.listen(PORT, () => {
   console.log(`  ANTHROPIC_BASE_URL=http://localhost:${PORT} claude`);
   console.log("");
 
-  // Initialize router (embeddings load is fire-and-forget)
-  router.initRouter();
+  // Initialize router (premium only — embeddings load is fire-and-forget)
+  if (isPremium()) {
+    router.initRouter();
+  } else {
+    console.log("  [router] Premium disabled — router intelligence inactive");
+  }
 
   console.log("");
   console.log("  Waiting for requests...");
