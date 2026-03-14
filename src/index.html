@@ -4,16 +4,26 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Jannal</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>(function(){var t=localStorage.getItem('jannal_theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')})()</script>
 </head>
 <body>
+<div class="noise-overlay" aria-hidden="true"></div>
 
 <!-- Header -->
 <div class="header">
   <div class="header-left">
-    <div class="logo">J</div>
+    <img class="logo" src="/logo.png" alt="Jannal">
     <div><h1>Jannal</h1></div>
   </div>
   <div class="header-right">
+    <div class="global-search-wrapper">
+      <input class="global-search" type="text" placeholder="Search all requests..." id="globalSearch" />
+      <div class="global-search-results" id="globalSearchResults"></div>
+    </div>
     <select class="profile-select" id="profileSelect">
       <option value="All Tools">All Tools</option>
     </select>
@@ -22,10 +32,14 @@
       <div class="status-dot disconnected" id="statusDot"></div>
       <span id="statusText" style="color:var(--text3)">Connecting...</span>
     </div>
-    <div class="turn-badge" id="turnBadge">Turn 0</div>
+    <div class="req-badge" id="reqBadge">Req 0</div>
     <span class="tokens-saved-badge" id="tokensSavedBadge" style="display:none"></span>
     <div class="session-cost" id="sessionCost">$0.0000</div>
     <div class="daily-cost" id="dailyCost" style="display:none" title="Total cost today"></div>
+    <button class="theme-toggle" id="themeToggle" title="Toggle dark/light mode" aria-label="Toggle theme">
+      <svg id="themeIconMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg id="themeIconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    </button>
   </div>
 </div>
 
@@ -51,10 +65,11 @@
 
 <!-- Main -->
 <div class="main">
-  <div class="panel turns-panel">
+  <div class="panel reqs-panel">
     <div class="panel-header">
-      <span>Turns</span>
+      <span>Requests</span>
       <div class="panel-actions">
+        <button id="viewToggleBtn" class="panel-btn view-toggle active" title="Toggle grouped/flat view">Grouped</button>
         <div class="export-dropdown">
           <button id="exportBtn" class="panel-btn" title="Export session">Export</button>
           <div id="exportMenu" class="export-menu">
@@ -65,7 +80,7 @@
         <button id="clearBtn" class="panel-btn">Clear</button>
       </div>
     </div>
-    <div class="panel-body" id="turnList">
+    <div class="panel-body" id="reqList">
       <div class="empty">
         <div class="empty-icon waiting">&#x1F50D;</div>
         <h2>Waiting for requests...</h2>
@@ -81,8 +96,8 @@
     <div class="panel-body" id="detailBody">
       <div class="empty">
         <div class="empty-icon">&#x1F4CA;</div>
-        <h2>No turn selected</h2>
-        <p>When requests flow through the proxy, each turn will appear on the left. Click one to see the full context breakdown.</p>
+        <h2>No request selected</h2>
+        <p>When requests flow through the proxy, each request will appear on the left. Click one to see the full context breakdown.</p>
       </div>
     </div>
   </div>

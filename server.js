@@ -29,18 +29,35 @@ function estimateTokens(input) {
 // ─── Model budget lookup ─────────────────────────────────────────────────────
 
 const MODEL_BUDGETS = {
-  "claude-sonnet": 200000, "claude-opus": 200000, "claude-haiku": 200000,
-  "claude-3": 200000, "claude-4": 200000,
   "gpt-4o": 128000, "gpt-4-turbo": 128000, "gpt-3.5": 16385,
   "gemini": 1000000,
 };
 
 function getBudget(model) {
   if (!model) return 200000;
+  const m = model.toLowerCase();
+
+  if (m.includes("1m")) return 1000000;
+  if (m.includes("opus-4-5") || m.includes("opus-4-6") || m.includes("opus-4.5") || m.includes("opus-4.6")) return 1000000;
+  if (m.includes("claude")) return 200000;
+
   for (const [key, budget] of Object.entries(MODEL_BUDGETS)) {
-    if (model.includes(key)) return budget;
+    if (m.includes(key)) return budget;
   }
   return 200000;
+}
+
+// If actual token usage exceeds the model's default budget,
+// snap up to the next known context tier (e.g. 200k → 1M).
+const CONTEXT_TIERS = [128000, 200000, 1000000];
+
+function inferBudget(model, tokenCount) {
+  const base = getBudget(model);
+  if (tokenCount <= base) return base;
+  for (const tier of CONTEXT_TIERS) {
+    if (tokenCount <= tier) return tier;
+  }
+  return Math.max(base, tokenCount);
 }
 
 // ─── Model pricing ($ per 1M tokens) ────────────────────────────────────────
@@ -85,10 +102,10 @@ function calculateCost(inputTokens, outputTokens, model) {
   return { inputCost, outputCost, totalCost: inputCost + outputCost };
 }
 
-// ─── Turn storage (full content kept server-side) ────────────────────────────
+// ─── Request storage (full content kept server-side) ─────────────────────────
 
-const turnStore = new Map(); // turnId -> { fullContents, model }
-const MAX_STORED_TURNS = 200;
+const reqStore = new Map(); // reqId -> { fullContents, model }
+const MAX_STORED_REQS = 200;
 
 // ─── Profile management ─────────────────────────────────────────────────────
 
@@ -156,9 +173,39 @@ function applyToolFilter(tools, profileName) {
 
 loadProfiles();
 
+// ─── Group tracking ─────────────────────────────────────────────────────────
+
+let groupCounter = 0;
+let activeGroupId = null;
+let lastRequestTime = 0;
+const GAP_THRESHOLD = 45000; // 45 seconds
+
+function simpleHash(str) {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) & 0xffffffff;
+  }
+  return hash.toString(36);
+}
+
+function getSessionHash(body) {
+  if (!body.system) return "no-system";
+  const text = typeof body.system === "string" ? body.system : JSON.stringify(body.system);
+  return simpleHash(text.slice(0, 500));
+}
+
+function assignGroup() {
+  const now = Date.now();
+  if (activeGroupId === null || (now - lastRequestTime) > GAP_THRESHOLD) {
+    activeGroupId = groupCounter++;
+  }
+  lastRequestTime = now;
+  return activeGroupId;
+}
+
 // ─── Request analysis ────────────────────────────────────────────────────────
 
-let turnCounter = 0;
+let reqCounter = 0;
 
 function analyzeRequest(body) {
   const segments = [];
@@ -239,16 +286,18 @@ function analyzeRequest(body) {
     }
   }
 
-  const turnId = turnCounter++;
+  const reqId = reqCounter++;
   const model = body.model || "unknown";
+  const sessionHash = getSessionHash(body);
+  const groupId = assignGroup();
 
   // Store full content + model server-side
-  turnStore.set(turnId, { fullContents, model });
+  reqStore.set(reqId, { fullContents, model });
 
-  // Evict old turns if over limit
-  if (turnStore.size > MAX_STORED_TURNS) {
-    const oldest = turnStore.keys().next().value;
-    turnStore.delete(oldest);
+  // Evict old requests if over limit
+  if (reqStore.size > MAX_STORED_REQS) {
+    const oldest = reqStore.keys().next().value;
+    reqStore.delete(oldest);
   }
 
   // Calculate estimated cost
@@ -256,9 +305,9 @@ function analyzeRequest(body) {
   const estimatedCost = calculateCost(totalEstimatedTokens, 0, model);
 
   return {
-    turn: turnId,
+    turn: reqId,
     model,
-    budget: getBudget(model),
+    budget: inferBudget(model, totalEstimatedTokens),
     maxTokens: body.max_tokens,
     stream: !!body.stream,
     segments,    // NO fullContent — kept lightweight for WebSocket
@@ -267,6 +316,8 @@ function analyzeRequest(body) {
     timestamp: Date.now(),
     messageCount: (body.messages || []).length,
     toolsUsed: [...toolsUsed],
+    groupId,
+    sessionHash,
   };
 }
 
@@ -393,7 +444,7 @@ const server = http.createServer((req, res) => {
 
     // Serve other static files from public/ (JS, CSS, assets)
     const urlPath = req.url.split("?")[0]; // strip query params
-    if (urlPath.startsWith("/assets/") || urlPath.endsWith(".js") || urlPath.endsWith(".css") || urlPath.endsWith(".svg") || urlPath.endsWith(".ico")) {
+    if (urlPath.startsWith("/assets/") || urlPath.endsWith(".js") || urlPath.endsWith(".css") || urlPath.endsWith(".svg") || urlPath.endsWith(".ico") || urlPath.endsWith(".png")) {
       const filePath = path.join(__dirname, "public", urlPath);
       const safePath = path.resolve(filePath);
       if (!safePath.startsWith(path.join(__dirname, "public"))) {
@@ -409,16 +460,16 @@ const server = http.createServer((req, res) => {
 
     if (req.url === "/health") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: "ok", turns: turnCounter, clients: wsClients.size }));
+      res.end(JSON.stringify({ status: "ok", requests: reqCounter, clients: wsClients.size }));
       return;
     }
 
     // ── API: Fetch full content for a segment ──
     const contentMatch = req.url.match(/^\/api\/content\/(\d+)\/(\d+)$/);
     if (contentMatch) {
-      const turnId = parseInt(contentMatch[1]);
+      const reqId = parseInt(contentMatch[1]);
       const segIndex = parseInt(contentMatch[2]);
-      const stored = turnStore.get(turnId);
+      const stored = reqStore.get(reqId);
 
       if (!stored || segIndex >= stored.fullContents.length) {
         jsonResponse(res, 200, { error: "Not found", content: null });
@@ -428,6 +479,30 @@ const server = http.createServer((req, res) => {
           charLength: stored.fullContents[segIndex].length,
         });
       }
+      return;
+    }
+
+    // ── API: Search across all requests ──
+    const searchMatch = req.url.match(/^\/api\/search\?q=(.+)$/);
+    if (searchMatch) {
+      const query = decodeURIComponent(searchMatch[1]).toLowerCase();
+      const results = [];
+      for (const [reqId, stored] of reqStore) {
+        for (let i = 0; i < stored.fullContents.length; i++) {
+          const content = stored.fullContents[i].toLowerCase();
+          const idx = content.indexOf(query);
+          if (idx !== -1) {
+            const start = Math.max(0, idx - 60);
+            const end = Math.min(content.length, idx + query.length + 60);
+            results.push({
+              turnId: reqId,
+              segIndex: i,
+              snippet: stored.fullContents[i].slice(start, end),
+            });
+          }
+        }
+      }
+      jsonResponse(res, 200, { results });
       return;
     }
 
@@ -552,7 +627,7 @@ const server = http.createServer((req, res) => {
 
         broadcast({ type: "request", ...analysis });
         console.log(
-          `[T${analysis.turn}] ${analysis.model} | ${analysis.segments.length} segs | ~${analysis.totalEstimatedTokens} tokens | $${analysis.estimatedCost.totalCost.toFixed(4)}${filteringInfo ? ` | FILTERED: ${filteringInfo.originalToolCount}→${filteringInfo.filteredToolCount} tools (-${filteringInfo.removedTools.length})` : ""}`
+          `[R${analysis.turn}] ${analysis.model} | ${analysis.segments.length} segs | ~${analysis.totalEstimatedTokens} tokens | $${analysis.estimatedCost.totalCost.toFixed(4)}${filteringInfo ? ` | FILTERED: ${filteringInfo.originalToolCount}→${filteringInfo.filteredToolCount} tools (-${filteringInfo.removedTools.length})` : ""}`
         );
 
         // Fire count_tokens in parallel for accurate count (non-blocking)
@@ -631,9 +706,9 @@ const server = http.createServer((req, res) => {
             }
 
             if (actualInput || actualOutput) {
-              // Find model for this turn from turnStore
-              const latestTurnId = turnCounter - 1;
-              const stored = turnStore.get(latestTurnId);
+              // Find model for this request from reqStore
+              const latestReqId = reqCounter - 1;
+              const stored = reqStore.get(latestReqId);
               const model = stored?.model || "unknown";
               const cost = calculateCost(actualInput, actualOutput, model);
 
@@ -673,7 +748,7 @@ wss.on("connection", (ws) => {
   console.log(`Inspector connected (${wsClients.size} clients)`);
   ws.send(JSON.stringify({
     type: "connected",
-    turns: turnCounter,
+    requests: reqCounter,
     profiles,
     activeProfile,
   }));

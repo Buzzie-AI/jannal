@@ -6,9 +6,9 @@ import { saveProfile } from './profiles.js'
 // ─── Modal ──────────────────────────────────────────────────────────────────
 
 export async function openModal(segIndex) {
-  const turn = state.turns[state.selectedTurn]
-  if (!turn) return
-  const seg = turn.segments[segIndex]
+  const req = state.reqs[state.selectedReq]
+  if (!req) return
+  const seg = req.segments[segIndex]
   if (!seg) return
 
   modalState.segment = seg
@@ -27,7 +27,7 @@ export async function openModal(segIndex) {
   const statsHtml = `
     <div class="modal-stat"><div class="modal-stat-value" style="color:${color}">${fmt(seg.tokens)}</div><div class="modal-stat-label">Tokens</div></div>
     <div class="modal-stat"><div class="modal-stat-value">${(seg.charLength || 0).toLocaleString()}</div><div class="modal-stat-label">Chars</div></div>
-    <div class="modal-stat"><div class="modal-stat-value">${((seg.tokens / turn.totalEstimatedTokens) * 100).toFixed(1)}%</div><div class="modal-stat-label">Of total</div></div>
+    <div class="modal-stat"><div class="modal-stat-value">${((seg.tokens / req.totalEstimatedTokens) * 100).toFixed(1)}%</div><div class="modal-stat-label">Of total</div></div>
   `
   document.getElementById('modalStats').innerHTML = statsHtml
 
@@ -50,14 +50,14 @@ export async function openModal(segIndex) {
 
   // Fetch full content from server via HTTP
   try {
-    const data = await fetchContent(turn.turn, segIndex)
+    const data = await fetchContent(req.turn, segIndex)
     if (data.content) {
       modalState.fullContent = data.content
       if (seg.type === 'tools') {
         try { modalState.parsedTools = JSON.parse(data.content) } catch (e) { modalState.parsedTools = null }
       }
     } else {
-      modalState.fullContent = seg.preview || '(content no longer available — turn may have been evicted)'
+      modalState.fullContent = seg.preview || '(content no longer available — request may have been evicted)'
     }
   } catch (err) {
     console.error('Failed to fetch segment content:', err)
@@ -130,48 +130,73 @@ function renderToolsView(body) {
   html += `<button class="btn-secondary" onclick="toggleAllTools(false)" style="padding:3px 8px;border-radius:4px;font-size:10px">None</button>`
   html += `</div></div>`
 
-  // Tool groups by MCP server (tools sorted by cost, highest first)
+  // Split groups into MCP servers vs built-in tools
+  const mcpGroups = []
+  const otherGroups = []
   for (const [serverName, serverTools] of groups) {
-    const displayName = serverName === 'other' ? 'Other' : serverName.charAt(0).toUpperCase() + serverName.slice(1)
-    const sortedTools = [...serverTools].sort((a, b) => estimateToolTokens(b) - estimateToolTokens(a))
-    const groupTokens = sortedTools.reduce((s, t) => s + estimateToolTokens(t), 0)
-    const groupEnabled = sortedTools.filter(t => isToolEnabled(t.name, profile, isAllTools)).length
+    if (serverName === 'other') otherGroups.push([serverName, serverTools])
+    else mcpGroups.push([serverName, serverTools])
+  }
 
-    html += `<div class="tool-group" data-server="${escapeHtml(serverName)}">`
-    html += `<div class="tool-group-header">`
-    html += `<div class="tool-group-title">`
-    html += `<span class="tool-group-name">${escapeHtml(displayName)}</span>`
-    html += `<span class="tool-group-meta">${sortedTools.length} tools · ~${fmt(groupTokens)} tok</span>`
-    html += `</div>`
-    html += `<div class="tool-group-actions">`
-    html += `<button class="btn-secondary" onclick="toggleGroupTools('${escapeHtml(serverName)}', true)" style="padding:2px 6px;font-size:9px">All</button>`
-    html += `<button class="btn-secondary" onclick="toggleGroupTools('${escapeHtml(serverName)}', false)" style="padding:2px 6px;font-size:9px">None</button>`
-    html += `</div></div>`
-    html += `<div class="tool-group-body">`
+  // Render a section of tool groups (tools sorted by cost, highest first; never-used indicator)
+  function renderSection(sectionGroups) {
+    for (const [serverName, serverTools] of sectionGroups) {
+      const displayName = serverName === 'other' ? 'Other' : serverName.charAt(0).toUpperCase() + serverName.slice(1)
+      const sortedTools = [...serverTools].sort((a, b) => estimateToolTokens(b) - estimateToolTokens(a))
+      const groupTokens = sortedTools.reduce((s, t) => s + estimateToolTokens(t), 0)
+      const groupEnabled = sortedTools.filter(t => isToolEnabled(t.name, profile, isAllTools)).length
+      const allEnabled = groupEnabled === sortedTools.length
 
-    for (const tool of sortedTools) {
-      const enabled = isToolEnabled(tool.name, profile, isAllTools)
-      const toolTokens = estimateToolTokens(tool)
-      const desc = (tool.description || '').slice(0, 120)
-      const neverUsed = !state.toolsUsed?.has(tool.name)
-      html += `<div class="tool-card" data-tool-name="${escapeHtml(tool.name)}">`
-      html += `<input type="checkbox" data-tool="${escapeHtml(tool.name)}" data-server="${escapeHtml(serverName)}" ${enabled ? 'checked' : ''} onchange="onToolToggle()">`
-      html += `<div class="tool-card-info">`
-      html += `<div class="tool-card-name">${escapeHtml(tool.name)}${neverUsed ? ' <span class="never-used-tag" title="Not used this session">never used</span>' : ''}</div>`
-      if (desc) html += `<div class="tool-card-desc">${escapeHtml(desc)}</div>`
+      html += `<div class="tool-group" data-server="${escapeHtml(serverName)}">`
+      html += `<div class="tool-group-header">`
+      html += `<input type="checkbox" class="tool-group-checkbox" data-server="${escapeHtml(serverName)}" ${allEnabled ? 'checked' : ''} onclick="event.stopPropagation(); toggleGroupCheckbox('${escapeHtml(serverName)}', this.checked)">`
+      html += `<span class="tool-group-chevron" onclick="toggleGroupAccordion('${escapeHtml(serverName)}')">&#9654;</span>`
+      html += `<div class="tool-group-title" onclick="toggleGroupAccordion('${escapeHtml(serverName)}')">`
+      html += `<span class="tool-group-name">${escapeHtml(displayName)}</span>`
+      html += `<span class="tool-group-meta">${groupEnabled}/${sortedTools.length} tools · ~${fmt(groupTokens)} tok</span>`
       html += `</div>`
-      html += `<div class="tool-card-tokens">~${fmt(toolTokens)} tok</div>`
-      html += `</div>`
+      html += `<div class="tool-group-actions">`
+      html += `<button class="btn-secondary" onclick="event.stopPropagation(); toggleGroupTools('${escapeHtml(serverName)}', true)" style="padding:2px 6px;font-size:9px">All</button>`
+      html += `<button class="btn-secondary" onclick="event.stopPropagation(); toggleGroupTools('${escapeHtml(serverName)}', false)" style="padding:2px 6px;font-size:9px">None</button>`
+      html += `</div></div>`
+      html += `<div class="tool-group-body collapsed">`
+
+      for (const tool of sortedTools) {
+        const enabled = isToolEnabled(tool.name, profile, isAllTools)
+        const toolTokens = estimateToolTokens(tool)
+        const desc = (tool.description || '').slice(0, 120)
+        const neverUsed = !state.toolsUsed?.has(tool.name)
+        html += `<div class="tool-card" data-tool-name="${escapeHtml(tool.name)}">`
+        html += `<input type="checkbox" data-tool="${escapeHtml(tool.name)}" data-server="${escapeHtml(serverName)}" ${enabled ? 'checked' : ''} onchange="onToolToggle()">`
+        html += `<div class="tool-card-info">`
+        html += `<div class="tool-card-name">${escapeHtml(tool.name)}${neverUsed ? ' <span class="never-used-tag" title="Not used this session">never used</span>' : ''}</div>`
+        if (desc) html += `<div class="tool-card-desc">${escapeHtml(desc)}</div>`
+        html += `</div>`
+        html += `<div class="tool-card-tokens">~${fmt(toolTokens)} tok</div>`
+        html += `</div>`
+      }
+      html += `</div></div>`
     }
-    html += `</div></div>`
+  }
+
+  // MCP Servers section
+  if (mcpGroups.length > 0) {
+    html += `<div class="tool-section-header">MCP Servers</div>`
+    renderSection(mcpGroups)
+  }
+
+  // Other Tools section
+  if (otherGroups.length > 0) {
+    html += `<div class="tool-section-header">Other Tools</div>`
+    renderSection(otherGroups)
   }
 
   // Savings estimate
   html += `<div id="toolsSavings"></div>`
 
   // Save as profile bar + Quick profile from this turn
-  const turn = state.turns[state.selectedTurn]
-  const toolsUsedThisTurn = turn?.toolsUsed || []
+  const req = state.reqs[state.selectedReq]
+  const toolsUsedThisTurn = req?.toolsUsed || []
   html += `<div class="save-profile-bar">`
   html += `<input type="text" id="profileNameInput" placeholder="Profile name..." value="">`
   html += `<button class="btn-primary" onclick="saveCurrentAsProfile()">Save as Profile</button>`
@@ -187,22 +212,58 @@ function renderToolsView(body) {
   onToolToggle()
 }
 
+export function toggleGroupAccordion(serverName) {
+  const group = document.querySelector(`.tool-group[data-server="${serverName}"]`)
+  if (!group) return
+  const body = group.querySelector('.tool-group-body')
+  const chevron = group.querySelector('.tool-group-chevron')
+  if (body) body.classList.toggle('collapsed')
+  if (chevron) chevron.classList.toggle('expanded')
+}
+
+export function toggleGroupCheckbox(serverName, checked) {
+  document.querySelectorAll(`.modal-tools input[type="checkbox"][data-server="${serverName}"]:not(.tool-group-checkbox)`).forEach(cb => {
+    cb.checked = checked
+  })
+  onToolToggle()
+}
+
+export function updateGroupCheckboxes() {
+  document.querySelectorAll('.tool-group-checkbox').forEach(groupCb => {
+    const server = groupCb.dataset.server
+    const children = document.querySelectorAll(`.modal-tools input[type="checkbox"][data-server="${server}"]:not(.tool-group-checkbox)`)
+    const total = children.length
+    let checked = 0
+    children.forEach(cb => { if (cb.checked) checked++ })
+    groupCb.checked = checked === total
+    groupCb.indeterminate = checked > 0 && checked < total
+    // Update the group meta count
+    const group = groupCb.closest('.tool-group')
+    const meta = group?.querySelector('.tool-group-meta')
+    if (meta) {
+      const existing = meta.textContent
+      const tokPart = existing.match(/·.*$/)
+      meta.textContent = `${checked}/${total} tools ${tokPart ? tokPart[0] : ''}`
+    }
+  })
+}
+
 export function toggleGroupTools(serverName, enable) {
-  document.querySelectorAll(`.modal-tools input[data-server="${serverName}"]`).forEach(cb => {
+  document.querySelectorAll(`.modal-tools input[data-server="${serverName}"]:not(.tool-group-checkbox)`).forEach(cb => {
     cb.checked = enable
   })
   onToolToggle()
 }
 
 export function toggleAllTools(enable) {
-  document.querySelectorAll('.modal-tools input[type="checkbox"]').forEach(cb => {
+  document.querySelectorAll('.modal-tools input[type="checkbox"]:not(.tool-group-checkbox)').forEach(cb => {
     cb.checked = enable
   })
   onToolToggle()
 }
 
 export function onToolToggle() {
-  const checkboxes = document.querySelectorAll('.modal-tools input[type="checkbox"]')
+  const checkboxes = document.querySelectorAll('.modal-tools input[type="checkbox"]:not(.tool-group-checkbox)')
   const tools = modalState.parsedTools
   if (!tools || !checkboxes.length) return
 
@@ -222,9 +283,11 @@ export function onToolToggle() {
     }
   })
 
+  updateGroupCheckboxes()
+
   const savingsEl = document.getElementById('toolsSavings')
   if (savingsEl && disabledTokens > 0) {
-    savingsEl.innerHTML = `<div class="savings-banner">Disabling ${tools.length - enabledCount} tools saves ~${fmt(disabledTokens)} tokens per turn</div>`
+    savingsEl.innerHTML = `<div class="savings-banner">Disabling ${tools.length - enabledCount} tools saves ~${fmt(disabledTokens)} tokens per request</div>`
   } else if (savingsEl) {
     savingsEl.innerHTML = ''
   }
@@ -235,10 +298,10 @@ export function onToolToggle() {
 }
 
 export async function createProfileFromThisTurn() {
-  const turn = state.turns[state.selectedTurn]
-  const toolsUsed = turn?.toolsUsed || []
+  const req = state.reqs[state.selectedReq]
+  const toolsUsed = req?.toolsUsed || []
   if (toolsUsed.length === 0) return
-  const name = `Turn ${turn?.turn ?? 0} tools`
+  const name = `Req ${req?.req ?? 0} tools`
   const result = await saveProfile(name, 'allowlist', toolsUsed)
   if (result.success) {
     const bar = document.querySelector('.save-profile-bar')
@@ -261,7 +324,7 @@ export async function saveCurrentAsProfile() {
     return
   }
 
-  const checkboxes = document.querySelectorAll('.modal-tools input[type="checkbox"]')
+  const checkboxes = document.querySelectorAll('.modal-tools input[type="checkbox"]:not(.tool-group-checkbox)')
   const enabledTools = []
   checkboxes.forEach(cb => {
     if (cb.checked) enabledTools.push(cb.dataset.tool)
@@ -301,6 +364,16 @@ export function filterModalContent() {
         if (match) visibleCount++
       })
       group.style.display = visibleCount > 0 ? 'block' : 'none'
+      // Auto-expand groups with matches, collapse others
+      const body = group.querySelector('.tool-group-body')
+      const chevron = group.querySelector('.tool-group-chevron')
+      if (visibleCount > 0) {
+        body?.classList.remove('collapsed')
+        chevron?.classList.add('expanded')
+      } else {
+        body?.classList.add('collapsed')
+        chevron?.classList.remove('expanded')
+      }
     })
     return
   }

@@ -1,9 +1,9 @@
-import { SEGMENT_COLORS } from './state.js'
+import { getSegmentColor } from './state.js'
 
 export function getSegColor(seg) {
-  if (seg.type === 'message' && seg.role === 'assistant') return SEGMENT_COLORS.assistant
-  if (seg.type === 'message') return SEGMENT_COLORS.message
-  return SEGMENT_COLORS[seg.type] || '#64748B'
+  if (seg.type === 'message' && seg.role === 'assistant') return getSegmentColor('assistant')
+  if (seg.type === 'message') return getSegmentColor('message')
+  return getSegmentColor(seg.type)
 }
 
 export function getSegLabel(seg) {
@@ -46,13 +46,25 @@ export function estimateToolTokens(tool) {
   return Math.ceil(JSON.stringify(tool).length / 3.8)
 }
 
-/** Infer MCP server name from tool name (e.g. "github_search_repos" → "github") */
+/** Infer MCP server name from tool name.
+ *  MCP tools: mcp__<namespace>__<tool> → last segment of namespace
+ *    e.g. "mcp__plugin_firebase_firebase__login" → "firebase"
+ *  Non-MCP: first word before _ or /
+ *    e.g. "github_search_repos" → "github"
+ */
 export function getToolServer(tool) {
   const name = tool?.name || ''
-  // MCP tools often use server_tool or serverTool naming
+  // MCP tools: split by __ to get namespace, then take last _-separated segment
+  if (name.startsWith('mcp__')) {
+    const parts = name.split('__')
+    if (parts.length >= 3) {
+      const namespace = parts[1] // e.g. "plugin_firebase_firebase"
+      const segments = namespace.split('_')
+      return segments[segments.length - 1].toLowerCase()
+    }
+  }
   const match = name.match(/^([a-zA-Z0-9]+)[_\/]/)
   if (match) return match[1].toLowerCase()
-  // Single-word tools go to "Other"
   return 'other'
 }
 
