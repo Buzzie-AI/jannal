@@ -152,6 +152,7 @@ const router = require("./router/index");
 let groupCounter = 0;
 let activeGroupId = null;
 let lastRequestTime = 0;
+let lastHumanText = null;
 const GAP_THRESHOLD = 45000; // 45 seconds
 
 function simpleHash(str) {
@@ -168,12 +169,81 @@ function getSessionHash(body) {
   return simpleHash(text.slice(0, 500));
 }
 
-function assignGroup() {
-  const now = Date.now();
-  if (activeGroupId === null || (now - lastRequestTime) > GAP_THRESHOLD) {
-    activeGroupId = groupCounter++;
+/**
+ * Walk body.messages backwards to find the most recent human-authored text.
+ * Skips tool_result-only user messages (which are tool output, not human input).
+ * Strips <system-reminder> tags injected by Claude Code.
+ * Returns first 200 chars for comparison, or null if no human text found.
+ */
+function extractLastHumanText(body) {
+  if (!body.messages) return null;
+  for (let i = body.messages.length - 1; i >= 0; i--) {
+    const msg = body.messages[i];
+    if (msg.role !== "user") continue;
+    if (typeof msg.content === "string" && msg.content.trim()) {
+      return msg.content.slice(0, 200);
+    }
+    if (Array.isArray(msg.content)) {
+      const textParts = msg.content
+        .filter((b) => b.type === "text" && b.text)
+        .map((b) => b.text);
+      if (textParts.length === 0) continue; // tool_result-only → skip
+      let combined = textParts.join("\n");
+      combined = combined.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
+      if (combined.length > 0) return combined.slice(0, 200);
+    }
   }
+  return null;
+}
+
+/**
+ * Detect if a request is from the main Claude Code session (vs a subagent).
+ * Main sessions have long system prompts (10k+ chars) and long conversation
+ * histories. Subagents have short, focused prompts and few messages.
+ */
+function isMainSession(body) {
+  const msgCount = (body.messages || []).length;
+  const sysLen = body.system
+    ? (typeof body.system === "string" ? body.system : JSON.stringify(body.system)).length
+    : 0;
+  return msgCount > 4 && sysLen > 2000;
+}
+
+/**
+ * Assign a group (turn) ID to a request.
+ *
+ * Heuristic: a new group starts when a main-session request contains
+ * human-authored text that differs from the previous main-session text.
+ * This detects "user typed a new message" without relying on time gaps.
+ * Subagent requests and tool-result continuations stay in the current group.
+ * Time gap (45s) remains as a fallback safety net.
+ */
+function assignGroup(body) {
+  const now = Date.now();
+
+  // Fallback: time gap creates new group (safety net)
+  if (activeGroupId === null || (now - lastRequestTime) > GAP_THRESHOLD) {
+    lastHumanText = extractLastHumanText(body);
+    activeGroupId = groupCounter++;
+    lastRequestTime = now;
+    return activeGroupId;
+  }
+
   lastRequestTime = now;
+
+  // Only detect new turns from main session requests
+  if (isMainSession(body)) {
+    const currentText = extractLastHumanText(body);
+    if (currentText !== null && lastHumanText !== null && currentText !== lastHumanText) {
+      // Human typed a new message → new turn → new group
+      lastHumanText = currentText;
+      activeGroupId = groupCounter++;
+    } else if (currentText !== null) {
+      lastHumanText = currentText;
+    }
+  }
+
+  // Subagent requests and tool-result continuations stay in current group
   return activeGroupId;
 }
 
@@ -263,16 +333,34 @@ function analyzeRequest(body) {
   const reqId = reqCounter++;
   const model = body.model || "unknown";
   const sessionHash = getSessionHash(body);
-  const groupId = assignGroup();
+  const groupId = assignGroup(body);
 
   // Extract telemetry fields for router eval events
   const toolsSeg = segments.find((s) => s.type === "tools");
+  // Extract actual human text from user messages, skipping tool_result payloads.
+  // In Claude's API, multi-turn "user" messages often contain tool_result blocks
+  // (returning tool output to the model), not human-authored text.
   const userMessages = (body.messages || [])
     .filter((m) => m.role === "user")
     .map((m) => {
-      const text = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
-      return text.slice(0, 500);
+      if (typeof m.content === "string") return m.content;
+      if (Array.isArray(m.content)) {
+        // Extract only text blocks, ignore tool_result blocks
+        const textParts = m.content
+          .filter((block) => block.type === "text" && block.text)
+          .map((block) => block.text);
+        return textParts.join("\n");
+      }
+      return "";
     })
+    .filter((text) => text.length > 0) // Drop empty messages (tool_result-only)
+    .map((text) => {
+      // Strip <system-reminder>...</system-reminder> tags — they're Claude Code
+      // system prompts injected into user messages, noise for intent detection.
+      return text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
+    })
+    .filter((text) => text.length > 0) // Re-filter after stripping
+    .map((text) => text.slice(0, 500))
     .slice(-3);
 
   // Store full content + model + telemetry fields server-side
@@ -709,7 +797,10 @@ const server = http.createServer((req, res) => {
     // Forward to Anthropic
     const fwdHeaders = {};
     for (const [key, value] of Object.entries(req.headers)) {
-      if (key === "host" || key === "connection") continue;
+      // Strip host/connection (standard proxy), and accept-encoding so the
+      // response arrives uncompressed — the proxy needs to parse SSE/JSON for
+      // telemetry, and compressed chunks produce binary garbage in toString().
+      if (key === "host" || key === "connection" || key === "accept-encoding") continue;
       fwdHeaders[key] = value;
     }
     fwdHeaders["host"] = ANTHROPIC_HOST;

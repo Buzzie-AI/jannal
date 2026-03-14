@@ -10,7 +10,7 @@ const CATALOG = {
     label: "Linear",
     description: "Project management, issues, tickets, sprint planning, roadmaps",
     examples: ["create issue", "plan sprint", "update ticket", "list issues"],
-    toolPrefixes: ["mcp__claude_ai_linear__", "mcp__linear__"],
+    toolPrefixes: ["mcp__claude_ai_linear__", "mcp__linear__", "mcp__linear-server__"],
   },
   firebase: {
     label: "Firebase",
@@ -34,12 +34,27 @@ const CATALOG = {
     label: "Supabase",
     description: "Database queries, auth, storage, edge functions, data management",
     examples: ["query database", "insert data", "supabase auth", "database schema"],
-    toolPrefixes: ["mcp__supabase__"],
+    toolPrefixes: ["mcp__supabase__", "mcp__supabase-production__", "mcp__supabase-staging__"],
   },
 };
 
 const DEFAULT_CORE_TOOLS = [
+  // File & code tools
   "Agent", "Bash", "Read", "Write", "Edit", "Glob", "Grep",
+  // Web & research tools
+  "WebSearch", "WebFetch",
+  // Code intelligence
+  "LSP", "NotebookEdit", "NotebookRead",
+  // Workflow tools
+  "EnterPlanMode", "ExitPlanMode", "AskUserQuestion", "Skill",
+  // Task management
+  "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TodoWrite",
+  // Session management
+  "EnterWorktree", "ExitWorktree",
+  // Scheduling
+  "CronCreate", "CronDelete", "CronList",
+  // MCP resource tools
+  "ListMcpResourcesTool", "ReadMcpResourceTool",
 ];
 
 function getCatalogEntry(groupName) {

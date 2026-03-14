@@ -12,7 +12,7 @@ const { CATALOG } = require("./catalog");
 
 const MODEL_NAME = "BAAI/bge-small-en-v1.5";
 const CACHE_DIR = path.join(__dirname, "..", "data", "models-cache");
-const SIMILARITY_THRESHOLD = 0.4;
+const SIMILARITY_THRESHOLD = 0.55;
 const RANK_TIMEOUT_MS = 200;
 
 // ─── Singleton state ──────────────────────────────────────────────────────────

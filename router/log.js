@@ -292,7 +292,7 @@ function buildEvalEvent(reqMeta, routerResult, responseResult) {
     router: {
       mode: routerResult.mode || "off",
       eligible: routerResult.eligible || false,
-      skip_reason: routerResult.skip_reason || "router_off",
+      skip_reason: routerResult.skip_reason ?? null,
       matched_by: routerResult.matched_by || null,
       confidence: routerResult.confidence ?? null,
       selected_groups: routerResult.selected_groups || null,

@@ -6,7 +6,7 @@
 
 const RULES = [
   {
-    patterns: [/\b(linear|ticket|issue|sprint|roadmap|backlog)\b/i],
+    patterns: [/\b(linear|ticket|sprint|roadmap|backlog)\b/i],
     groups: ["linear"],
     reason: "Keyword: project tracking",
   },
@@ -16,17 +16,20 @@ const RULES = [
     reason: "Keyword: Firebase",
   },
   {
-    patterns: [/\b(supabase|database|query|sql|table|schema|row|column)\b/i],
+    // "database", "query", etc. removed — too generic, false-match on non-supabase contexts
+    patterns: [/\b(supabase)\b/i],
     groups: ["supabase"],
-    reason: "Keyword: database",
+    reason: "Keyword: Supabase",
   },
   {
-    patterns: [/\b(playwright|browser|screenshot|click|navigate|page)\b/i],
+    // "page", "click", "navigate" removed — too generic, false-match on UI/code discussions
+    patterns: [/\b(playwright|browser\s*(?:test|automat)|screenshot|take\s*a?\s*screenshot)\b/i],
     groups: ["playwright"],
     reason: "Keyword: browser automation",
   },
   {
-    patterns: [/\b(docs?|documentation|library|reference|look\s*up)\b/i],
+    // "doc", "reference" removed — too generic, match JSDoc/code references
+    patterns: [/\b(context7|documentation|library\s*docs?|look\s*up\s*docs?)\b/i],
     groups: ["context7"],
     reason: "Keyword: documentation",
   },
