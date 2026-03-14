@@ -1,9 +1,9 @@
-import { SEGMENT_COLORS } from './state.js'
+import { getSegmentColor } from './state.js'
 
 export function getSegColor(seg) {
-  if (seg.type === 'message' && seg.role === 'assistant') return SEGMENT_COLORS.assistant
-  if (seg.type === 'message') return SEGMENT_COLORS.message
-  return SEGMENT_COLORS[seg.type] || '#64748B'
+  if (seg.type === 'message' && seg.role === 'assistant') return getSegmentColor('assistant')
+  if (seg.type === 'message') return getSegmentColor('message')
+  return getSegmentColor(seg.type)
 }
 
 export function getSegLabel(seg) {
