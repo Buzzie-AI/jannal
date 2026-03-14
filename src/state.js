@@ -25,10 +25,29 @@ export let modalState = {
 export const MAX_REQS = 50
 
 export const SEGMENT_COLORS = {
-  system: '#3B82F6',
-  tools: '#F97316',
-  message: '#06B6D4',
-  assistant: '#10B981',
-  tool_result: '#EAB308',
-  tool_use: '#8B5CF6',
+  system: '#60A5FA',
+  tools: '#FB923C',
+  message: '#22D3EE',
+  assistant: '#34D399',
+  tool_result: '#FBBF24',
+  tool_use: '#A78BFA',
+}
+
+// Dynamic getter that reads current CSS variable values (theme-aware)
+const SEG_VAR_MAP = {
+  system: '--seg-system',
+  tools: '--seg-tools',
+  message: '--seg-message',
+  assistant: '--seg-assistant',
+  tool_result: '--seg-tool-result',
+  tool_use: '--seg-tool-use',
+}
+
+export function getSegmentColor(type) {
+  const cssVar = SEG_VAR_MAP[type]
+  if (cssVar) {
+    const val = getComputedStyle(document.documentElement).getPropertyValue(cssVar).trim()
+    if (val) return val
+  }
+  return SEGMENT_COLORS[type] || '#64748B'
 }
