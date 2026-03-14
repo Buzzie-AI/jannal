@@ -93,6 +93,10 @@ export function connect() {
     }
 
     if (data.type === 'request') {
+      // Aggregate toolsUsed from conversation history into session Set
+      if (data.toolsUsed && data.toolsUsed.length) {
+        data.toolsUsed.forEach(name => state.toolsUsed.add(name))
+      }
       state.reqs.push(data)
       // Evict oldest requests to keep memory bounded
       if (state.reqs.length > MAX_REQS) {
