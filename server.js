@@ -143,6 +143,10 @@ loadProfiles();
 const routerLog = require("./router/log");
 routerLog.initDataDir();
 
+// ─── Router ──────────────────────────────────────────────────────────────────
+
+const router = require("./router/index");
+
 // ─── Group tracking ─────────────────────────────────────────────────────────
 
 let groupCounter = 0;
@@ -514,6 +518,30 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    // ── API: Router config ──
+    if (req.url === "/api/router/config") {
+      jsonResponse(res, 200, router.getRouterConfig());
+      return;
+    }
+
+    // ── API: Router status ──
+    if (req.url === "/api/router/status") {
+      const status = router.getRouterStatus();
+      const metrics = routerLog.getMetrics();
+      jsonResponse(res, 200, {
+        schema_version: 1,
+        ...status,
+        metrics: metrics ? {
+          window_event_count: metrics.window?.event_count ?? 0,
+          eligible_rate: metrics.summary?.eligible_rate ?? 0,
+          would_have_missed_rate: metrics.summary?.would_have_missed_rate ?? 0,
+          avg_confidence: metrics.summary?.avg_confidence ?? null,
+          median_estimated_tokens_saved: metrics.summary?.median_estimated_tokens_saved ?? 0,
+        } : null,
+      });
+      return;
+    }
+
     res.writeHead(404);
     res.end("Not found");
     return;
@@ -579,13 +607,14 @@ const server = http.createServer((req, res) => {
   // ── Proxy API requests to Anthropic ──
   let bodyChunks = [];
   req.on("data", (chunk) => bodyChunks.push(chunk));
-  req.on("end", () => {
+  req.on("end", async () => {
     const bodyBuffer = Buffer.concat(bodyChunks);
     const bodyStr = bodyBuffer.toString("utf-8");
 
     let forwardBuffer = bodyBuffer; // default: forward original
     let filteringInfo = null;
     let requestTurn = null; // captured for response correlation
+    let routerResult = { mode: "off" };
 
     // Analyze + filter if it's a messages endpoint
     if (req.url.includes("/messages")) {
@@ -628,6 +657,24 @@ const server = http.createServer((req, res) => {
         console.log(
           `[R${analysis.turn}] ${analysis.model} | ${analysis.segments.length} segs | ~${analysis.totalEstimatedTokens} tokens | $${analysis.estimatedCost.totalCost.toFixed(4)}${filteringInfo ? ` | FILTERED: ${filteringInfo.originalToolCount}→${filteringInfo.filteredToolCount} tools (-${filteringInfo.removedTools.length})` : ""}`
         );
+
+        // Run router prediction (shadow mode: predict but don't filter)
+        try {
+          routerResult = await router.routeRequest({
+            stored: reqStore.get(requestTurn),
+            activeProfile,
+            allToolNames: (parsed.tools || []).map((t) => t.name),
+          });
+          if (routerResult.eligible) {
+            console.log(
+              `  [router] ${routerResult.matched_by} | conf=${routerResult.confidence} | selected=${(routerResult.selected_groups || []).join(",")} | stripped=${(routerResult.stripped_groups || []).join(",") || "none"} | ~${routerResult.estimated_tokens_saved} tokens saved`
+            );
+          } else {
+            console.log(`  [router] skip: ${routerResult.skip_reason}`);
+          }
+        } catch (err) {
+          console.error("  [router] prediction error:", err.message);
+        }
 
         // Fire count_tokens in parallel for accurate count (non-blocking)
         const apiKey = req.headers["x-api-key"];
@@ -737,11 +784,11 @@ const server = http.createServer((req, res) => {
               );
             }
 
-            // Emit router eval event for ALL /messages responses (Step 0b telemetry)
+            // Emit router eval event for ALL /messages responses
             try {
               const evalEvent = routerLog.buildEvalEvent(
                 { reqId, stored, activeProfile, profiles },
-                { mode: "off" },
+                routerResult,
                 { stopReason, actualInput, actualOutput, cost, toolsUsed }
               );
               routerLog.emitEvalEvent(evalEvent);
@@ -776,6 +823,7 @@ wss.on("connection", (ws) => {
     requests: reqCounter,
     profiles,
     activeProfile,
+    routerMode: routerLog.getConfig().mode,
   }));
 
   // Handle incoming messages from client
@@ -816,6 +864,11 @@ server.listen(PORT, () => {
   console.log("");
   console.log("  To use with Claude Code:");
   console.log(`  ANTHROPIC_BASE_URL=http://localhost:${PORT} claude`);
+  console.log("");
+
+  // Initialize router (embeddings load is fire-and-forget)
+  router.initRouter();
+
   console.log("");
   console.log("  Waiting for requests...");
   console.log("");

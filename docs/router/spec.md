@@ -255,6 +255,9 @@ Add backend APIs:
 - `GET /api/router/status`
 - `GET /api/router/metrics`
 
+Reference:
+- Lightweight observability and UI requirements for these endpoints are documented in [enhancements.md](/Users/athahar/work/claude-apps/playground/jannal/docs/router/enhancements.md)
+
 Extend WebSocket payloads:
 - `request` event includes routing metadata
 - `response_complete` includes `toolsUsed`

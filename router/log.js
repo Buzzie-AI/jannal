@@ -85,13 +85,19 @@ const DEFAULT_STATE = {
     last_event_id: null,
     last_rotation_at: null,
   },
-  sticky_routes: {},
+  // Note: sticky routes are in-memory only (router/index.js).
+  // Durable persistence deferred to Step 4.
 };
 
 function loadState() {
   try {
     if (fs.existsSync(STATE_FILE)) {
       routerState = JSON.parse(fs.readFileSync(STATE_FILE, "utf-8"));
+      // Clean up legacy sticky_routes from durable state (now in-memory only)
+      if (routerState.sticky_routes) {
+        delete routerState.sticky_routes;
+        atomicWriteJson(STATE_FILE, routerState);
+      }
     } else {
       routerState = { ...DEFAULT_STATE, updated_at: new Date().toISOString() };
       atomicWriteJson(STATE_FILE, routerState);
@@ -308,15 +314,64 @@ function buildEvalEvent(reqMeta, routerResult, responseResult) {
       tool_use_groups: [...new Set((responseResult.toolsUsed || []).map(getToolGroup))],
       tool_use_count: (responseResult.toolsUsed || []).length,
     },
-    evaluation: {
+    evaluation: computeEvaluation(routerResult, responseResult.toolsUsed),
+  };
+}
+
+/**
+ * Compute the evaluation section of an eval event.
+ * Determines would_have_missed by checking if any tools used belong to stripped groups.
+ */
+function computeEvaluation(routerResult, toolsUsed) {
+  const eligible = routerResult.eligible || false;
+  const strippedGroups = routerResult.stripped_groups || [];
+  const selectedGroups = routerResult.selected_groups || [];
+
+  // Default: no evaluation data when router didn't make a prediction
+  if (!eligible || !routerResult.matched_by || routerResult.matched_by === "fallback_all") {
+    return {
       would_have_missed: false,
       missed_tools: [],
       missed_groups: [],
       precision_groups: null,
       recall_groups: null,
-      selected_group_count: 0,
+      selected_group_count: selectedGroups.filter((g) => g !== "core").length,
       used_group_count: 0,
-    },
+    };
+  }
+
+  // Find tools that were used AND belong to stripped groups
+  const missedTools = (toolsUsed || []).filter((name) => {
+    const group = getToolGroup(name);
+    return group !== "core" && strippedGroups.includes(group);
+  });
+  const missedGroups = [...new Set(missedTools.map(getToolGroup))];
+
+  // Compute precision/recall for groups
+  const usedGroups = [...new Set(
+    (toolsUsed || []).map(getToolGroup).filter((g) => g !== "core")
+  )];
+  const selectedNonCore = selectedGroups.filter((g) => g !== "core");
+
+  // Precision: of the groups we selected, how many were actually used?
+  const truePositives = selectedNonCore.filter((g) => usedGroups.includes(g)).length;
+  const precision = selectedNonCore.length > 0
+    ? parseFloat((truePositives / selectedNonCore.length).toFixed(3))
+    : null;
+
+  // Recall: of the groups actually used, how many did we select?
+  const recall = usedGroups.length > 0
+    ? parseFloat((truePositives / usedGroups.length).toFixed(3))
+    : null;
+
+  return {
+    would_have_missed: missedTools.length > 0,
+    missed_tools: missedTools,
+    missed_groups: missedGroups,
+    precision_groups: precision,
+    recall_groups: recall,
+    selected_group_count: selectedNonCore.length,
+    used_group_count: usedGroups.length,
   };
 }
 
@@ -436,6 +491,21 @@ function recomputeMetrics() {
 
 // ─── Exports ─────────────────────────────────────────────────────────────────
 
+function getState() {
+  return routerState;
+}
+
+function getMetrics() {
+  try {
+    if (fs.existsSync(METRICS_FILE)) {
+      return JSON.parse(fs.readFileSync(METRICS_FILE, "utf-8"));
+    }
+  } catch (err) {
+    console.error("  [router] Failed to read metrics:", err.message);
+  }
+  return null;
+}
+
 module.exports = {
   initDataDir,
   emitEvalEvent,
@@ -444,4 +514,7 @@ module.exports = {
   computeToolsetHash,
   generateEventId,
   getConfig,
+  getState,
+  saveState,
+  getMetrics,
 };

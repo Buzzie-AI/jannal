@@ -6,7 +6,7 @@
 // Unknown MCP servers get their own first-class group derived from the
 // namespace, without needing a catalog entry.
 
-const { CATALOG, DEFAULT_CORE_TOOLS } = require("./catalog");
+const { CATALOG, DEFAULT_CORE_TOOLS, getCatalogEntry } = require("./catalog");
 
 let coreToolSet = new Set(DEFAULT_CORE_TOOLS);
 
@@ -82,4 +82,20 @@ function getAvailableGroups(toolNames) {
   });
 }
 
-module.exports = { getToolGroup, groupTools, getAvailableGroups, setCoreTools };
+/**
+ * Get a display-friendly label for a group key.
+ * Catalog groups use their label, unknown MCP groups title-case all segments.
+ */
+function formatGroupLabel(groupKey) {
+  const entry = getCatalogEntry(groupKey);
+  if (entry) return entry.label;
+  if (groupKey === "core") return "Core";
+  if (groupKey === "other") return "Other";
+  // Unknown MCP: title-case all segments for full readable label
+  return groupKey
+    .split("_")
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(" ");
+}
+
+module.exports = { getToolGroup, groupTools, getAvailableGroups, setCoreTools, formatGroupLabel };
