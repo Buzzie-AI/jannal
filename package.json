@@ -1,6 +1,6 @@
 {
   "name": "jannal",
-  "version": "0.1.0",
+  "version": "0.2.2",
   "description": "Intercept, visualize, and optimize LLM context windows. Proxy that sits between your AI tools and the Anthropic API.",
   "main": "electron/main.js",
   "scripts": {
@@ -55,8 +55,11 @@
       "category": "public.app-category.developer-tools",
       "icon": "build/icon.icns",
       "darkModeSupport": true,
-      "hardenedRuntime": false,
-      "gatekeeperAssess": false
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true
     },
     "dmg": {
       "title": "Jannal",
@@ -78,6 +81,11 @@
       "node_modules/**/*",
       "package.json"
     ],
-    "asar": true
+    "asar": true,
+    "asarUnpack": [
+      "server.js",
+      "public/**/*",
+      "node_modules/**/*"
+    ]
   }
 }

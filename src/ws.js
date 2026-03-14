@@ -1,7 +1,56 @@
-import { state, MAX_TURNS } from './state.js'
+import { state, MAX_REQS } from './state.js'
 import { renderAll, renderStatus } from './render.js'
 import { renderProfileSelector } from './profiles.js'
 import { persistSession, addDailyCost } from './session.js'
+
+// ─── Group helpers ──────────────────────────────────────────────────────────
+
+function addReqToGroup(reqIndex, data) {
+  const gid = data.groupId
+  if (gid == null) return
+
+  if (!state.groups[gid]) {
+    state.groups[gid] = {
+      id: gid,
+      reqIndices: [],
+      sessions: {},
+      startTime: data.timestamp,
+      endTime: data.timestamp,
+    }
+    // Collapse previous groups, expand the new one
+    for (const k of Object.keys(state.expandedGroups)) {
+      state.expandedGroups[k] = false
+    }
+    state.expandedGroups[gid] = true
+  }
+
+  const group = state.groups[gid]
+  group.reqIndices.push(reqIndex)
+  group.endTime = Math.max(group.endTime, data.timestamp)
+
+  // Track sessions within the group
+  const sh = data.sessionHash || 'unknown'
+  if (!group.sessions[sh]) {
+    group.sessions[sh] = { reqIndices: [], model: data.model }
+  }
+  group.sessions[sh].reqIndices.push(reqIndex)
+}
+
+export function rebuildGroups() {
+  state.groups = {}
+  state.expandedGroups = {}
+  for (let i = 0; i < state.reqs.length; i++) {
+    addReqToGroup(i, state.reqs[i])
+  }
+  // Only expand the most recent group
+  const gids = Object.keys(state.groups).map(Number)
+  if (gids.length > 0) {
+    const maxGid = Math.max(...gids)
+    for (const gid of gids) {
+      state.expandedGroups[gid] = gid === maxGid
+    }
+  }
+}
 
 // ─── WebSocket ──────────────────────────────────────────────────────────────
 
@@ -45,31 +94,35 @@ export function connect() {
       if (data.toolsUsed && data.toolsUsed.length) {
         data.toolsUsed.forEach(name => state.toolsUsed.add(name))
       }
-      state.turns.push(data)
-      // Evict oldest turns to keep memory bounded
-      if (state.turns.length > MAX_TURNS) {
-        state.turns.splice(0, state.turns.length - MAX_TURNS)
+      state.reqs.push(data)
+      // Evict oldest requests to keep memory bounded
+      if (state.reqs.length > MAX_REQS) {
+        state.reqs.splice(0, state.reqs.length - MAX_REQS)
+        // Rebuild groups after eviction
+        rebuildGroups()
+      } else {
+        addReqToGroup(state.reqs.length - 1, data)
       }
-      state.selectedTurn = state.turns.length - 1
+      state.selectedReq = state.reqs.length - 1
       renderAll()
       persistSession(state)
     }
 
     if (data.type === 'token_count_update') {
-      const turn = state.turns.find(t => t.turn === data.turn)
-      if (turn) {
-        turn.exactInputTokens = data.exactInputTokens
-        turn.segments = data.segments
-        turn.totalEstimatedTokens = data.exactInputTokens
-        turn.estimatedCost = data.estimatedCost
-        turn.tokenCountSource = 'count_tokens'
+      const req = state.reqs.find(t => t.turn === data.turn)
+      if (req) {
+        req.exactInputTokens = data.exactInputTokens
+        req.segments = data.segments
+        req.totalEstimatedTokens = data.exactInputTokens
+        req.estimatedCost = data.estimatedCost
+        req.tokenCountSource = 'count_tokens'
         renderAll()
         persistSession(state)
       }
     }
 
     if (data.type === 'response_complete') {
-      const latest = state.turns[state.turns.length - 1]
+      const latest = state.reqs[state.reqs.length - 1]
       if (latest) {
         latest.actualUsage = data.usage
         latest.stopReason = data.stopReason
