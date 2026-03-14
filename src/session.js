@@ -12,6 +12,7 @@ export function persistSession(state) {
       const data = {
         reqs: state.reqs,
         selectedReq: state.selectedReq,
+        groupView: state.groupView,
         savedAt: Date.now(),
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
@@ -35,6 +36,7 @@ export function restoreSession(state) {
       state.selectedReq = selectedReq != null && selectedReq < state.reqs.length
         ? selectedReq
         : state.reqs.length - 1
+      if (data.groupView != null) state.groupView = data.groupView
       return true
     }
   } catch (e) {

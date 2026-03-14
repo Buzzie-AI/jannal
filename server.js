@@ -173,6 +173,36 @@ function applyToolFilter(tools, profileName) {
 
 loadProfiles();
 
+// ─── Group tracking ─────────────────────────────────────────────────────────
+
+let groupCounter = 0;
+let activeGroupId = null;
+let lastRequestTime = 0;
+const GAP_THRESHOLD = 45000; // 45 seconds
+
+function simpleHash(str) {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) & 0xffffffff;
+  }
+  return hash.toString(36);
+}
+
+function getSessionHash(body) {
+  if (!body.system) return "no-system";
+  const text = typeof body.system === "string" ? body.system : JSON.stringify(body.system);
+  return simpleHash(text.slice(0, 500));
+}
+
+function assignGroup() {
+  const now = Date.now();
+  if (activeGroupId === null || (now - lastRequestTime) > GAP_THRESHOLD) {
+    activeGroupId = groupCounter++;
+  }
+  lastRequestTime = now;
+  return activeGroupId;
+}
+
 // ─── Request analysis ────────────────────────────────────────────────────────
 
 let reqCounter = 0;
@@ -248,6 +278,8 @@ function analyzeRequest(body) {
 
   const reqId = reqCounter++;
   const model = body.model || "unknown";
+  const sessionHash = getSessionHash(body);
+  const groupId = assignGroup();
 
   // Store full content + model server-side
   reqStore.set(reqId, { fullContents, model });
@@ -273,6 +305,8 @@ function analyzeRequest(body) {
     estimatedCost,
     timestamp: Date.now(),
     messageCount: (body.messages || []).length,
+    groupId,
+    sessionHash,
   };
 }
 

@@ -130,38 +130,63 @@ function renderToolsView(body) {
   html += `<button class="btn-secondary" onclick="toggleAllTools(false)" style="padding:3px 8px;border-radius:4px;font-size:10px">None</button>`
   html += `</div></div>`
 
-  // Tool groups by MCP server
+  // Split groups into MCP servers vs built-in tools
+  const mcpGroups = []
+  const otherGroups = []
   for (const [serverName, serverTools] of groups) {
-    const displayName = serverName === 'other' ? 'Other' : serverName.charAt(0).toUpperCase() + serverName.slice(1)
-    const groupTokens = serverTools.reduce((s, t) => s + estimateToolTokens(t), 0)
-    const groupEnabled = serverTools.filter(t => isToolEnabled(t.name, profile, isAllTools)).length
+    if (serverName === 'other') otherGroups.push([serverName, serverTools])
+    else mcpGroups.push([serverName, serverTools])
+  }
 
-    html += `<div class="tool-group" data-server="${escapeHtml(serverName)}">`
-    html += `<div class="tool-group-header">`
-    html += `<div class="tool-group-title">`
-    html += `<span class="tool-group-name">${escapeHtml(displayName)}</span>`
-    html += `<span class="tool-group-meta">${serverTools.length} tools · ~${fmt(groupTokens)} tok</span>`
-    html += `</div>`
-    html += `<div class="tool-group-actions">`
-    html += `<button class="btn-secondary" onclick="toggleGroupTools('${escapeHtml(serverName)}', true)" style="padding:2px 6px;font-size:9px">All</button>`
-    html += `<button class="btn-secondary" onclick="toggleGroupTools('${escapeHtml(serverName)}', false)" style="padding:2px 6px;font-size:9px">None</button>`
-    html += `</div></div>`
-    html += `<div class="tool-group-body">`
+  // Render a section of tool groups
+  function renderSection(sectionGroups) {
+    for (const [serverName, serverTools] of sectionGroups) {
+      const displayName = serverName === 'other' ? 'Other' : serverName.charAt(0).toUpperCase() + serverName.slice(1)
+      const groupTokens = serverTools.reduce((s, t) => s + estimateToolTokens(t), 0)
+      const groupEnabled = serverTools.filter(t => isToolEnabled(t.name, profile, isAllTools)).length
+      const allEnabled = groupEnabled === serverTools.length
 
-    for (const tool of serverTools) {
-      const enabled = isToolEnabled(tool.name, profile, isAllTools)
-      const toolTokens = estimateToolTokens(tool)
-      const desc = (tool.description || '').slice(0, 120)
-      html += `<div class="tool-card" data-tool-name="${escapeHtml(tool.name)}">`
-      html += `<input type="checkbox" data-tool="${escapeHtml(tool.name)}" data-server="${escapeHtml(serverName)}" ${enabled ? 'checked' : ''} onchange="onToolToggle()">`
-      html += `<div class="tool-card-info">`
-      html += `<div class="tool-card-name">${escapeHtml(tool.name)}</div>`
-      if (desc) html += `<div class="tool-card-desc">${escapeHtml(desc)}</div>`
+      html += `<div class="tool-group" data-server="${escapeHtml(serverName)}">`
+      html += `<div class="tool-group-header">`
+      html += `<input type="checkbox" class="tool-group-checkbox" data-server="${escapeHtml(serverName)}" ${allEnabled ? 'checked' : ''} onclick="event.stopPropagation(); toggleGroupCheckbox('${escapeHtml(serverName)}', this.checked)">`
+      html += `<span class="tool-group-chevron" onclick="toggleGroupAccordion('${escapeHtml(serverName)}')">&#9654;</span>`
+      html += `<div class="tool-group-title" onclick="toggleGroupAccordion('${escapeHtml(serverName)}')">`
+      html += `<span class="tool-group-name">${escapeHtml(displayName)}</span>`
+      html += `<span class="tool-group-meta">${groupEnabled}/${serverTools.length} tools · ~${fmt(groupTokens)} tok</span>`
       html += `</div>`
-      html += `<div class="tool-card-tokens">~${fmt(toolTokens)} tok</div>`
-      html += `</div>`
+      html += `<div class="tool-group-actions">`
+      html += `<button class="btn-secondary" onclick="event.stopPropagation(); toggleGroupTools('${escapeHtml(serverName)}', true)" style="padding:2px 6px;font-size:9px">All</button>`
+      html += `<button class="btn-secondary" onclick="event.stopPropagation(); toggleGroupTools('${escapeHtml(serverName)}', false)" style="padding:2px 6px;font-size:9px">None</button>`
+      html += `</div></div>`
+      html += `<div class="tool-group-body collapsed">`
+
+      for (const tool of serverTools) {
+        const enabled = isToolEnabled(tool.name, profile, isAllTools)
+        const toolTokens = estimateToolTokens(tool)
+        const desc = (tool.description || '').slice(0, 120)
+        html += `<div class="tool-card" data-tool-name="${escapeHtml(tool.name)}">`
+        html += `<input type="checkbox" data-tool="${escapeHtml(tool.name)}" data-server="${escapeHtml(serverName)}" ${enabled ? 'checked' : ''} onchange="onToolToggle()">`
+        html += `<div class="tool-card-info">`
+        html += `<div class="tool-card-name">${escapeHtml(tool.name)}</div>`
+        if (desc) html += `<div class="tool-card-desc">${escapeHtml(desc)}</div>`
+        html += `</div>`
+        html += `<div class="tool-card-tokens">~${fmt(toolTokens)} tok</div>`
+        html += `</div>`
+      }
+      html += `</div></div>`
     }
-    html += `</div></div>`
+  }
+
+  // MCP Servers section
+  if (mcpGroups.length > 0) {
+    html += `<div class="tool-section-header">MCP Servers</div>`
+    renderSection(mcpGroups)
+  }
+
+  // Other Tools section
+  if (otherGroups.length > 0) {
+    html += `<div class="tool-section-header">Other Tools</div>`
+    renderSection(otherGroups)
   }
 
   // Savings estimate
@@ -180,22 +205,58 @@ function renderToolsView(body) {
   onToolToggle()
 }
 
+export function toggleGroupAccordion(serverName) {
+  const group = document.querySelector(`.tool-group[data-server="${serverName}"]`)
+  if (!group) return
+  const body = group.querySelector('.tool-group-body')
+  const chevron = group.querySelector('.tool-group-chevron')
+  if (body) body.classList.toggle('collapsed')
+  if (chevron) chevron.classList.toggle('expanded')
+}
+
+export function toggleGroupCheckbox(serverName, checked) {
+  document.querySelectorAll(`.modal-tools input[type="checkbox"][data-server="${serverName}"]:not(.tool-group-checkbox)`).forEach(cb => {
+    cb.checked = checked
+  })
+  onToolToggle()
+}
+
+export function updateGroupCheckboxes() {
+  document.querySelectorAll('.tool-group-checkbox').forEach(groupCb => {
+    const server = groupCb.dataset.server
+    const children = document.querySelectorAll(`.modal-tools input[type="checkbox"][data-server="${server}"]:not(.tool-group-checkbox)`)
+    const total = children.length
+    let checked = 0
+    children.forEach(cb => { if (cb.checked) checked++ })
+    groupCb.checked = checked === total
+    groupCb.indeterminate = checked > 0 && checked < total
+    // Update the group meta count
+    const group = groupCb.closest('.tool-group')
+    const meta = group?.querySelector('.tool-group-meta')
+    if (meta) {
+      const existing = meta.textContent
+      const tokPart = existing.match(/·.*$/)
+      meta.textContent = `${checked}/${total} tools ${tokPart ? tokPart[0] : ''}`
+    }
+  })
+}
+
 export function toggleGroupTools(serverName, enable) {
-  document.querySelectorAll(`.modal-tools input[data-server="${serverName}"]`).forEach(cb => {
+  document.querySelectorAll(`.modal-tools input[data-server="${serverName}"]:not(.tool-group-checkbox)`).forEach(cb => {
     cb.checked = enable
   })
   onToolToggle()
 }
 
 export function toggleAllTools(enable) {
-  document.querySelectorAll('.modal-tools input[type="checkbox"]').forEach(cb => {
+  document.querySelectorAll('.modal-tools input[type="checkbox"]:not(.tool-group-checkbox)').forEach(cb => {
     cb.checked = enable
   })
   onToolToggle()
 }
 
 export function onToolToggle() {
-  const checkboxes = document.querySelectorAll('.modal-tools input[type="checkbox"]')
+  const checkboxes = document.querySelectorAll('.modal-tools input[type="checkbox"]:not(.tool-group-checkbox)')
   const tools = modalState.parsedTools
   if (!tools || !checkboxes.length) return
 
@@ -214,6 +275,8 @@ export function onToolToggle() {
       disabledTokens += tokens
     }
   })
+
+  updateGroupCheckboxes()
 
   const savingsEl = document.getElementById('toolsSavings')
   if (savingsEl && disabledTokens > 0) {
@@ -237,7 +300,7 @@ export async function saveCurrentAsProfile() {
     return
   }
 
-  const checkboxes = document.querySelectorAll('.modal-tools input[type="checkbox"]')
+  const checkboxes = document.querySelectorAll('.modal-tools input[type="checkbox"]:not(.tool-group-checkbox)')
   const enabledTools = []
   checkboxes.forEach(cb => {
     if (cb.checked) enabledTools.push(cb.dataset.tool)
@@ -277,6 +340,16 @@ export function filterModalContent() {
         if (match) visibleCount++
       })
       group.style.display = visibleCount > 0 ? 'block' : 'none'
+      // Auto-expand groups with matches, collapse others
+      const body = group.querySelector('.tool-group-body')
+      const chevron = group.querySelector('.tool-group-chevron')
+      if (visibleCount > 0) {
+        body?.classList.remove('collapsed')
+        chevron?.classList.add('expanded')
+      } else {
+        body?.classList.add('collapsed')
+        chevron?.classList.remove('expanded')
+      }
     })
     return
   }
