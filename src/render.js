@@ -1,5 +1,5 @@
 import { state } from './state.js'
-import { getSegColor, getSegLabel, fmt, fmtCost, escapeHtml } from './utils.js'
+import { getSegColor, getSegLabel, fmt, fmtCost, inputRate, escapeHtml } from './utils.js'
 import { getDailyCost } from './session.js'
 
 // ─── Render ─────────────────────────────────────────────────────────────────
@@ -33,17 +33,26 @@ export function renderStatus() {
 
   // Session cost + savings
   let totalCost = 0
-  let totalSaved = 0
+  let totalSavedTokens = 0
+  let totalSavedCost = 0
   for (const t of state.reqs) {
     if (t.actualCost) totalCost += t.actualCost.totalCost
     else if (t.estimatedCost) totalCost += t.estimatedCost.totalCost
-    totalSaved += t.router?.estimated_tokens_saved || 0
+    const saved = t.router?.estimated_tokens_saved || 0
+    if (saved > 0) {
+      totalSavedTokens += saved
+      // Saved tokens are tool definitions that would have been input tokens.
+      // With prompt caching they'd mostly be cache reads (10% of base rate).
+      const rate = inputRate(t.model)
+      totalSavedCost += (saved / 1_000_000) * rate * 0.10
+    }
   }
   document.getElementById('sessionCost').textContent = fmtCost(totalCost)
   const savedEl = document.getElementById('sessionSaved')
   if (savedEl) {
-    savedEl.textContent = `Saved ~${fmt(totalSaved)}`
-    savedEl.classList.toggle('has-savings', totalSaved > 0)
+    const costStr = totalSavedCost >= 0.01 ? ` (${fmtCost(totalSavedCost)})` : ''
+    savedEl.textContent = `Saved ~${fmt(totalSavedTokens)}${costStr}`
+    savedEl.classList.toggle('has-savings', totalSavedTokens > 0)
   }
 
   // Tokens saved badge (when filtering active)

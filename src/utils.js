@@ -30,6 +30,16 @@ export function fmtCost(n) {
   return '$' + n.toFixed(4)
 }
 
+// Input price per 1M tokens (matches server.js MODEL_PRICING)
+export function inputRate(model) {
+  if (!model) return 3
+  if (model.includes('opus-4-6') || model.includes('opus-4.6') || model.includes('opus-4-5') || model.includes('opus-4.5')) return 5
+  if (model.includes('opus')) return 15
+  if (model.includes('haiku-4')) return 1
+  if (model.includes('haiku')) return 0.80
+  return 3 // sonnet default
+}
+
 export function escapeHtml(text) {
   const div = document.createElement('div')
   div.textContent = text
