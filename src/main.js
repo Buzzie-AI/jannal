@@ -5,6 +5,7 @@ import { renderAll, renderContextBar, renderReqList, renderDetail } from './rend
 import { openModal, closeModal, setModalView, toggleAllTools, toggleGroupTools, toggleGroupAccordion, toggleGroupCheckbox, onToolToggle, saveCurrentAsProfile, filterModalContent, copyModalContent } from './modal.js'
 import { onProfileChange } from './profiles.js'
 import { restoreSession, exportSessionJSON, exportSessionCSV, downloadExport, persistSession } from './session.js'
+import { initTheme, toggleTheme } from './theme.js'
 
 // ─── Request selection & clearing ──────────────────────────────────────────
 
@@ -123,6 +124,11 @@ function globalSearch(query) {
 
 // ─── Event listeners ────────────────────────────────────────────────────────
 
+document.getElementById('themeToggle').addEventListener('click', () => {
+  toggleTheme()
+  renderAll()
+})
+
 document.getElementById('profileSelect').addEventListener('change', (e) => {
   onProfileChange(e.target.value)
 })
@@ -202,6 +208,7 @@ document.addEventListener('keydown', (e) => {
 
 // ─── Init ───────────────────────────────────────────────────────────────────
 
+initTheme()
 restoreSession(state)
 rebuildGroups()
 connect()

@@ -182,7 +182,7 @@ function renderReqCard(i) {
   }
 
   if (t.actualCost) {
-    html += `<div class="req-cost" style="color:var(--cyan)">${fmtCost(t.actualCost.totalCost)}</div>`
+    html += `<div class="req-cost" style="color:var(--amber)">${fmtCost(t.actualCost.totalCost)}</div>`
   } else if (t.estimatedCost) {
     html += `<div class="req-cost" style="color:var(--text3)">~${fmtCost(t.estimatedCost.totalCost)}</div>`
   }
@@ -324,9 +324,9 @@ export function renderDetail() {
     html += `<div class="usage-row"><span class="usage-label">Output tokens</span><span class="usage-value">${req.actualUsage.output_tokens.toLocaleString()}</span></div>`
     if (req.actualCost) {
       html += `<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">`
-      html += `<div class="usage-row"><span class="usage-label">Input cost</span><span class="usage-value" style="color:var(--cyan)">${fmtCost(req.actualCost.inputCost)}</span></div>`
-      html += `<div class="usage-row"><span class="usage-label">Output cost</span><span class="usage-value" style="color:var(--cyan)">${fmtCost(req.actualCost.outputCost)}</span></div>`
-      html += `<div class="usage-row"><span class="usage-label">Total cost</span><span class="usage-value" style="color:var(--cyan);font-size:13px">${fmtCost(req.actualCost.totalCost)}</span></div>`
+      html += `<div class="usage-row"><span class="usage-label">Input cost</span><span class="usage-value" style="color:var(--amber)">${fmtCost(req.actualCost.inputCost)}</span></div>`
+      html += `<div class="usage-row"><span class="usage-label">Output cost</span><span class="usage-value" style="color:var(--amber)">${fmtCost(req.actualCost.outputCost)}</span></div>`
+      html += `<div class="usage-row"><span class="usage-label">Total cost</span><span class="usage-value" style="color:var(--amber);font-size:13px">${fmtCost(req.actualCost.totalCost)}</span></div>`
       html += `</div>`
     }
     html += `</div>`
@@ -334,7 +334,7 @@ export function renderDetail() {
     const isExact = req.tokenCountSource === 'count_tokens'
     html += `<div class="usage-box">`
     html += `<div class="usage-row"><span class="usage-label">Input tokens ${isExact ? '(exact)' : '(est.)'}</span><span class="usage-value" style="color:${isExact ? 'var(--green)' : 'var(--text2)'}">${isExact ? '' : '~'}${req.totalEstimatedTokens.toLocaleString()}</span></div>`
-    html += `<div class="usage-row"><span class="usage-label">Input cost ${isExact ? '' : '(est.)'}</span><span class="usage-value" style="color:${isExact ? 'var(--cyan)' : 'var(--text3)'}">${isExact ? '' : '~'}${fmtCost(req.estimatedCost.totalCost)}</span></div>`
+    html += `<div class="usage-row"><span class="usage-label">Input cost ${isExact ? '' : '(est.)'}</span><span class="usage-value" style="color:${isExact ? 'var(--amber)' : 'var(--text3)'}">${isExact ? '' : '~'}${fmtCost(req.estimatedCost.totalCost)}</span></div>`
     if (isExact) html += `<div style="margin-top:4px;font-size:9px;color:var(--text3)">via count_tokens API</div>`
     html += `</div>`
   }
