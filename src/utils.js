@@ -1,5 +1,8 @@
 import { getSegmentColor } from './state.js'
 
+// Re-export from shared lib for UI use (Vite bundles from project root)
+export { estimateToolTokens } from '../lib/tokens.js'
+
 export function getSegColor(seg) {
   if (seg.type === 'message' && seg.role === 'assistant') return getSegmentColor('assistant')
   if (seg.type === 'message') return getSegmentColor('message')
@@ -40,10 +43,6 @@ export function isToolEnabled(toolName, profile, isAllTools) {
   } else {
     return profile.tools.includes(toolName)
   }
-}
-
-export function estimateToolTokens(tool) {
-  return Math.ceil(JSON.stringify(tool).length / 3.8)
 }
 
 /** Infer MCP server name from tool name.
