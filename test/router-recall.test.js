@@ -10,8 +10,8 @@ const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 const { matchRules } = require("../router/rules");
 const { selectIntentMessage, routeRequest } = require("../router/index");
-const { getCatalogEntry } = require("../router/catalog");
-const { initDataDir } = require("../router/log");
+const { getCatalogEntry, DEFAULT_CORE_TOOLS } = require("../router/catalog");
+const { _setConfigForTest } = require("../router/log");
 
 // ─── Shared fixtures ─────────────────────────────────────────────────────────
 
@@ -79,10 +79,18 @@ function buildStored(userMessages) {
 
 // ─── Test setup ──────────────────────────────────────────────────────────────
 
-// Initialize router state from disk (loads shadow mode config, core tools).
-// This is required for routeRequest() to work — it reads config via getConfig().
+// Seed deterministic router config. Does NOT read from disk — tests are
+// independent of whatever router-state.json happens to exist locally.
 before(() => {
-  initDataDir();
+  _setConfigForTest({
+    mode: "shadow",
+    min_tool_count: 20,
+    min_tool_tokens: 5000,
+    auto_confidence_threshold: 0.9,
+    sticky_confidence_threshold: 0.92,
+    sticky_ttl_ms: 1800000,
+    core_tools: DEFAULT_CORE_TOOLS,
+  });
 });
 
 // ─── Intent Message Selection ────────────────────────────────────────────────

@@ -511,6 +511,19 @@ function getMetrics() {
   return null;
 }
 
+/**
+ * Set in-memory router config for testing. Does not read from or write to disk.
+ * Calls setCoreTools() to keep grouping module in sync.
+ */
+function _setConfigForTest(configOverrides) {
+  routerState = {
+    ...DEFAULT_STATE,
+    updated_at: new Date().toISOString(),
+    config: { ...DEFAULT_STATE.config, ...configOverrides },
+  };
+  setCoreTools(routerState.config.core_tools);
+}
+
 module.exports = {
   initDataDir,
   emitEvalEvent,
@@ -522,4 +535,5 @@ module.exports = {
   getState,
   saveState,
   getMetrics,
+  _setConfigForTest,
 };

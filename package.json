@@ -13,7 +13,7 @@
     "electron": "electron .",
     "electron:build": "vite build && electron-builder --mac",
     "electron:build:all": "vite build && electron-builder --mac --win --linux",
-    "test": "node --test test/"
+    "test": "node --test test/router-recall.test.js"
   },
   "keywords": [
     "llm",
