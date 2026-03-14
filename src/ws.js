@@ -105,7 +105,11 @@ export function connect() {
       } else {
         addReqToGroup(state.reqs.length - 1, data)
       }
-      state.selectedReq = state.reqs.length - 1
+      // Only auto-select if nothing is currently selected.
+      // If the user is inspecting a request, don't steal focus.
+      if (state.selectedReq === null) {
+        state.selectedReq = state.reqs.length - 1
+      }
       renderAll()
       persistSession(state)
     }

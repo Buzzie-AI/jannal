@@ -332,15 +332,16 @@ function renderGroupedList(el) {
         html += `<span>${model} · ${session.reqIndices.length} req${session.reqIndices.length !== 1 ? 's' : ''}</span>`
         html += `</div>`
 
-        for (const ri of session.reqIndices) {
-          html += renderReqCard(ri)
+        // Newest requests on top within each session
+        for (let k = session.reqIndices.length - 1; k >= 0; k--) {
+          html += renderReqCard(session.reqIndices[k])
         }
         sessionNum++
       }
     } else {
-      // Single session: just render requests
-      for (const ri of group.reqIndices) {
-        html += renderReqCard(ri)
+      // Single session: just render requests, newest on top
+      for (let k = group.reqIndices.length - 1; k >= 0; k--) {
+        html += renderReqCard(group.reqIndices[k])
       }
     }
 

@@ -166,9 +166,13 @@ function simpleHash(str) {
 }
 
 /**
- * Compute a stable session hash from the system prompt's text content.
- * Ignores metadata (cache_control, TTLs, ephemeral flags) that changes
- * per request and would destabilize the hash.
+ * Compute a stable session hash from model + system prompt text content.
+ *
+ * Includes the model name to distinguish main (opus) from subagent (sonnet)
+ * even when they share the same system prompt prefix (e.g. billing headers).
+ * Uses a 5000-char window (not 500) to capture content PAST common prefixes
+ * like x-anthropic-billing-header that are identical across all requests.
+ * Ignores metadata (cache_control, TTLs) that changes per request.
  */
 function getSessionHash(body) {
   if (!body.system) return "no-system";
@@ -182,11 +186,11 @@ function getSessionHash(body) {
       .join("\n")
       .trim();
   } else {
-    // Unknown structure — don't JSON.stringify (metadata instability)
     return "no-system";
   }
   if (!text) return "no-system";
-  return simpleHash(text.slice(0, 500));
+  const model = body.model || "unknown";
+  return simpleHash(model + "|" + text.slice(0, 5000));
 }
 
 /**
