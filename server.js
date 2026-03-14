@@ -273,9 +273,11 @@ function assignGroup(body) {
   const now = Date.now();
   const sessionHash = getSessionHash(body);
   const msgCount = (body.messages || []).length;
+  const model = body.model || "unknown";
+  const gap = now - lastRequestTime;
 
   // Time gap: reset everything, establish primary session
-  if (activeGroupId === null || (now - lastRequestTime) > GAP_THRESHOLD) {
+  if (activeGroupId === null || gap > GAP_THRESHOLD) {
     primarySessionHash = sessionHash;
     lastHumanText = extractLastHumanText(body);
     lastFirstText = extractFirstHumanText(body);
@@ -283,6 +285,7 @@ function assignGroup(body) {
     seenHashes.add(sessionHash);
     activeGroupId = groupCounter++;
     lastRequestTime = now;
+    console.log(`  [group] NEW group=${activeGroupId} reason=gap(${gap}ms) hash=${sessionHash} model=${model} msgs=${msgCount}`);
     return activeGroupId;
   }
 
@@ -307,9 +310,11 @@ function assignGroup(body) {
       seenHashes.clear();
       seenHashes.add(sessionHash);
       activeGroupId = groupCounter++;
+      console.log(`  [group] NEW group=${activeGroupId} reason=text_change(first=${firstTextChanged},last=${lastTextChanged}) hash=${sessionHash} model=${model} msgs=${msgCount} lastText="${(currentLastText || "").slice(0, 60)}"`);
     } else {
       if (currentLastText !== null) lastHumanText = currentLastText;
       if (currentFirstText !== null) lastFirstText = currentFirstText;
+      console.log(`  [group] SAME group=${activeGroupId} reason=primary_no_change hash=${sessionHash} model=${model} msgs=${msgCount}`);
     }
   }
   // Layer 2: Never-seen hash + high message count = different main session
@@ -320,8 +325,13 @@ function assignGroup(body) {
     seenHashes.clear();
     seenHashes.add(sessionHash);
     activeGroupId = groupCounter++;
+    console.log(`  [group] NEW group=${activeGroupId} reason=new_main(msgs=${msgCount}) hash=${sessionHash} model=${model}`);
   }
   // Layer 3: Known hash or low message count = subagent → same group
+  else {
+    const known = seenHashes.has(sessionHash);
+    console.log(`  [group] SAME group=${activeGroupId} reason=non_primary(known=${known},msgs=${msgCount}) hash=${sessionHash} model=${model}`);
+  }
 
   seenHashes.add(sessionHash);
   return activeGroupId;
