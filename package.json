@@ -4,6 +4,7 @@
   "description": "Intercept, visualize, and optimize LLM context windows. Proxy that sits between your AI tools and the Anthropic API.",
   "main": "electron/main.js",
   "scripts": {
+    "test:tokens": "node scripts/test-tokens.js",
     "dev:server": "node server.js",
     "dev:ui": "vite",
     "build": "vite build",
@@ -77,6 +78,7 @@
     "files": [
       "electron/**/*",
       "server.js",
+      "lib/**/*",
       "public/**/*",
       "node_modules/**/*",
       "package.json"
@@ -84,6 +86,7 @@
     "asar": true,
     "asarUnpack": [
       "server.js",
+      "lib/**/*",
       "public/**/*",
       "node_modules/**/*"
     ]
