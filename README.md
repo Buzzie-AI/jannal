@@ -16,7 +16,9 @@ Works with Claude Code and any tool that speaks the Anthropic Messages API. [Cur
 
 **Cost tracking** — See the cost of every turn, with per-model pricing (Opus, Sonnet, Haiku). Session cost accumulates in the header so you always know what you're spending. Uses the official `count_tokens` API for accurate counts before the response even finishes.
 
-**Filter tools** — The killer feature. If you're running Claude Code with 40+ MCP tools defined, half of them are probably irrelevant to what you're doing right now. Jannal strips them from the request before it hits the API. Create named profiles ("Coding Only", "Browser Automation") and switch between them from the UI.
+**Filter tools** — If you're running Claude Code with 40+ MCP tools defined, half of them are probably irrelevant to what you're doing right now. Jannal strips them from the request before it hits the API. Create named profiles ("Coding Only", "Browser Automation") and switch between them from the UI.
+
+**Router intelligence** *(Pro)* — Automatic tool filtering powered by intent detection. The router analyzes each request's user message using keyword rules and a local embedding model, predicts which MCP server groups are needed, and strips the rest. Shadow mode observes and logs predictions without filtering. Auto mode (coming soon) will filter in real time. Saves 10-17k tokens per request on typical 170-tool setups.
 
 ## Quick start
 
@@ -92,7 +94,35 @@ When you use Claude Code, a single user message can generate dozens of API reque
 
 Toggle between **Grouped** and **Flat** views using the button in the request panel header.
 
-## Intent-aware tool router
+## Free and Pro tiers
+
+Jannal has a free tier and a Pro tier. The core proxy/inspector experience is free. The intelligent routing layer is Pro.
+
+| Feature | Free | Pro |
+|---|---|---|
+| Proxy passthrough | Yes | Yes |
+| Request/segment inspection | Yes | Yes |
+| Token/cost tracking | Yes | Yes |
+| Tool filtering profiles | Yes | Yes |
+| Session export (JSON/CSV) | Yes | Yes |
+| Request grouping | Yes | Yes |
+| Router intelligence (shadow/auto) | - | Yes |
+| Savings intelligence | - | Yes |
+| Router decision UI | - | Yes |
+
+### Enabling Pro
+
+Set `data/app-config.json`:
+
+```json
+{ "premium": true }
+```
+
+Then restart the server. If the file doesn't exist, it auto-creates with `premium: false` on first run.
+
+When Pro is off, router UI elements are visible but locked — you can see what's available without it being active. The proxy, inspector, profiles, and all free features work normally.
+
+## Intent-aware tool router (Pro)
 
 If you run Claude Code with many MCP servers (Linear, Firebase, Playwright, Supabase, Context7, etc.), every request carries 100-170 tool definitions — roughly 40-50k tokens of tool overhead. Most requests only need a few of those servers. The router predicts which server groups are relevant and identifies which ones could be safely removed.
 
@@ -206,9 +236,12 @@ Open `http://localhost:5173` for the dev UI (auto-proxies API calls to the serve
 
 ```
 jannal/
-├── server.js              # Proxy server, token analysis, grouping, profile management
+├── server.js              # Proxy server, token analysis, grouping, premium gating
+├── lib/
+│   ├── app-config.js      # Premium feature flag (reads data/app-config.json)
+│   └── tokens.js          # Token estimation + budget helpers
 ├── vite.config.js         # Vite build + dev proxy config
-├── router/                # Intent-aware tool router (shadow mode)
+├── router/                # Intent-aware tool router (Pro feature, shadow mode)
 │   ├── index.js           # routeRequest() orchestrator, signal merging, intent selection
 │   ├── catalog.js         # Server group catalog (descriptions, prefixes, stripEligible)
 │   ├── grouping.js        # Canonical tool-to-group classification
@@ -230,7 +263,8 @@ jannal/
 ├── test/                  # Regression tests (node:test)
 │   └── router-recall.test.js  # Router recall tests from real shadow-mode failures
 ├── data/                  # Auto-created at runtime
-│   ├── router-evals.ndjson    # Shadow-mode eval events (append-only)
+│   ├── app-config.json        # Premium feature flag { "premium": true/false }
+│   ├── router-evals.ndjson    # Shadow-mode eval events (append-only, Pro only)
 │   ├── router-metrics.json    # Aggregate metrics (recomputed every 20 events)
 │   ├── router-state.json      # Router config and runtime state
 │   └── models-cache/          # Cached embedding model (~128MB after download)
