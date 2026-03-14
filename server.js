@@ -795,37 +795,27 @@ const server = http.createServer((req, res) => {
 
     // ── API: Router config ──
     if (req.url === "/api/router/config") {
-      if (!isPremium()) {
-        jsonResponse(res, 200, {
-          premium: false,
-          available: false,
-          effective_mode: "off",
-          locked_reason: "requires_pro",
-        });
-        return;
-      }
-      jsonResponse(res, 200, { premium: true, ...router.getRouterConfig() });
+      const config = router.getRouterConfig();
+      jsonResponse(res, 200, {
+        ...config,
+        premium: isPremium(),
+        available: isPremium(),
+        effective_mode: isPremium() ? config.mode : "off",
+        locked_reason: isPremium() ? null : "requires_pro",
+      });
       return;
     }
 
     // ── API: Router status ──
     if (req.url === "/api/router/status") {
-      if (!isPremium()) {
-        jsonResponse(res, 200, {
-          schema_version: 1,
-          premium: false,
-          available: false,
-          effective_mode: "off",
-          locked_reason: "requires_pro",
-          metrics: null,
-        });
-        return;
-      }
       const status = router.getRouterStatus();
-      const metrics = routerLog.getMetrics();
+      const metrics = isPremium() ? routerLog.getMetrics() : null;
       jsonResponse(res, 200, {
         schema_version: 1,
-        premium: true,
+        premium: isPremium(),
+        available: isPremium(),
+        effective_mode: isPremium() ? status.mode : "off",
+        locked_reason: isPremium() ? null : "requires_pro",
         ...status,
         metrics: metrics ? {
           window_event_count: metrics.window?.event_count ?? 0,

@@ -421,15 +421,13 @@ export function renderDetail() {
     html += `</div>`
   }
 
-  // Router decision (premium gate)
-  if (!state.premium && !req.router) {
-    // Show locked teaser for non-premium users
+  // Router decision (premium gate — short-circuit before rendering any router details)
+  if (!state.premium) {
     html += `<div class="router-box premium-locked">`
     html += `<div class="router-box-title">Router Intelligence</div>`
     html += `<div class="premium-locked-msg">Intelligent routing, savings analysis, and auto-filtering.<br>Available in Pro.</div>`
     html += `</div>`
-  }
-  if (req.router) {
+  } else if (req.router) {
     const r = req.router
     const modeLabel = r.mode === 'shadow' ? 'Shadow (observe only)' : r.mode === 'auto' ? 'Auto' : r.mode || 'off'
 
