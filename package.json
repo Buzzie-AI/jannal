@@ -1,6 +1,6 @@
 {
   "name": "jannal",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Intercept, visualize, and optimize LLM context windows. Proxy that sits between your AI tools and the Anthropic API.",
   "main": "electron/main.js",
   "scripts": {
