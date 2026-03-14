@@ -6,6 +6,9 @@ export const state = {
   selectedReq: null,
   profiles: {},
   activeProfile: 'All Tools',
+  groups: {},          // groupId → { id, reqIndices, sessions, startTime, endTime }
+  groupView: true,     // true = grouped, false = flat list
+  expandedGroups: {},  // groupId → boolean
 }
 
 export let modalState = {
