@@ -2,7 +2,7 @@ import './styles.css'
 import { state } from './state.js'
 import { connect, rebuildGroups } from './ws.js'
 import { renderAll, renderContextBar, renderReqList, renderDetail } from './render.js'
-import { openModal, closeModal, setModalView, toggleAllTools, toggleGroupTools, onToolToggle, saveCurrentAsProfile, filterModalContent, copyModalContent } from './modal.js'
+import { openModal, closeModal, setModalView, toggleAllTools, toggleGroupTools, toggleGroupAccordion, toggleGroupCheckbox, onToolToggle, saveCurrentAsProfile, filterModalContent, copyModalContent } from './modal.js'
 import { onProfileChange } from './profiles.js'
 import { restoreSession, exportSessionJSON, exportSessionCSV, downloadExport, persistSession } from './session.js'
 
@@ -70,6 +70,8 @@ window.toggleGroup = toggleGroup
 window.onProfileChange = onProfileChange
 window.toggleAllTools = toggleAllTools
 window.toggleGroupTools = toggleGroupTools
+window.toggleGroupAccordion = toggleGroupAccordion
+window.toggleGroupCheckbox = toggleGroupCheckbox
 window.onToolToggle = onToolToggle
 window.saveCurrentAsProfile = saveCurrentAsProfile
 window.filterModalContent = filterModalContent
