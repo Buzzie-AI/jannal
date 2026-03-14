@@ -48,7 +48,7 @@ const DEFAULT_CORE_TOOLS = [
   // Workflow tools
   "EnterPlanMode", "ExitPlanMode", "AskUserQuestion", "Skill",
   // Task management
-  "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TodoWrite",
+  "TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TaskOutput", "TaskStop", "TodoWrite",
   // Session management
   "EnterWorktree", "ExitWorktree",
   // Scheduling

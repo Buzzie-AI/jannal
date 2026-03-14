@@ -149,11 +149,22 @@ async function routeRequest(metadata) {
   let reason;
 
   if (rulesResult && embeddingsResult) {
-    // Both agree
-    matchedBy = "hybrid";
-    mergedGroups = [...new Set([...rulesResult.groups, ...embeddingsResult.groups])];
-    confidence = Math.max(rulesResult.confidence, embeddingsResult.confidence);
-    reason = `${rulesResult.reason} + embeddings`;
+    // Both signals present — use intersection (agreement), not union.
+    // Union lets a false positive from either signal survive; intersection
+    // requires both to agree, improving precision.
+    const intersection = rulesResult.groups.filter((g) => embeddingsResult.groups.includes(g));
+    if (intersection.length > 0) {
+      matchedBy = "hybrid";
+      mergedGroups = intersection;
+      confidence = Math.max(rulesResult.confidence, embeddingsResult.confidence);
+      reason = `${rulesResult.reason} + embeddings (agreed)`;
+    } else {
+      // No agreement — fall back to rules only (higher precision than embeddings)
+      matchedBy = "rules";
+      mergedGroups = rulesResult.groups;
+      confidence = rulesResult.confidence;
+      reason = `${rulesResult.reason} (embeddings disagreed)`;
+    }
   } else if (rulesResult) {
     matchedBy = "rules";
     mergedGroups = rulesResult.groups;
