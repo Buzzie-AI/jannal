@@ -138,11 +138,11 @@ function renderToolsView(body) {
     else mcpGroups.push([serverName, serverTools])
   }
 
-  // Render a section of tool groups (tools sorted by cost, highest first; never-used indicator)
+  // Render a section of tool groups (sorted by token cost, highest first)
   function renderSection(sectionGroups) {
     for (const [serverName, serverTools] of sectionGroups) {
-      const displayName = serverName === 'other' ? 'Other' : serverName.charAt(0).toUpperCase() + serverName.slice(1)
       const sortedTools = [...serverTools].sort((a, b) => estimateToolTokens(b) - estimateToolTokens(a))
+      const displayName = serverName === 'other' ? 'Other' : serverName.charAt(0).toUpperCase() + serverName.slice(1)
       const groupTokens = sortedTools.reduce((s, t) => s + estimateToolTokens(t), 0)
       const groupEnabled = sortedTools.filter(t => isToolEnabled(t.name, profile, isAllTools)).length
       const allEnabled = groupEnabled === sortedTools.length
@@ -201,7 +201,7 @@ function renderToolsView(body) {
   html += `<input type="text" id="profileNameInput" placeholder="Profile name..." value="">`
   html += `<button class="btn-primary" onclick="saveCurrentAsProfile()">Save as Profile</button>`
   if (toolsUsedThisTurn.length > 0) {
-    html += `<button class="btn-secondary" onclick="createProfileFromThisTurn()" title="Create profile from tools used in this turn">From this turn</button>`
+    html += `<button class="btn-secondary" onclick="createProfileFromThisTurn()" title="Create profile from tools used in this request">From this turn</button>`
   }
   html += `</div>`
 
@@ -301,14 +301,14 @@ export async function createProfileFromThisTurn() {
   const req = state.reqs[state.selectedReq]
   const toolsUsed = req?.toolsUsed || []
   if (toolsUsed.length === 0) return
-  const name = `Req ${req?.req ?? 0} tools`
+  const name = `Req ${req?.turn ?? 0} tools`
   const result = await saveProfile(name, 'allowlist', toolsUsed)
   if (result.success) {
     const bar = document.querySelector('.save-profile-bar')
     if (bar) {
       const origBg = bar.style.background
-      bar.style.background = 'rgba(16,185,129,0.1)'
-      bar.style.borderColor = 'rgba(16,185,129,0.3)'
+      bar.style.background = 'rgba(52,211,153,0.1)'
+      bar.style.borderColor = 'rgba(52,211,153,0.3)'
       setTimeout(() => { bar.style.background = origBg; bar.style.borderColor = '' }, 1500)
     }
   }

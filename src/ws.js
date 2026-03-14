@@ -1,7 +1,8 @@
 import { state, MAX_REQS } from './state.js'
-import { renderAll, renderStatus } from './render.js'
+import { renderAll, renderStatus, renderDetail } from './render.js'
 import { renderProfileSelector } from './profiles.js'
-import { persistSession, addDailyCost } from './session.js'
+import { persistSession, addDailyCost, addDailySavings } from './session.js'
+import { inputRate } from './utils.js'
 
 // ─── Group helpers ──────────────────────────────────────────────────────────
 
@@ -84,13 +85,17 @@ export function connect() {
     const data = JSON.parse(event.data)
 
     if (data.type === 'connected') {
+      state.premium = !!data.premium
       if (data.profiles) state.profiles = data.profiles
       if (data.activeProfile) state.activeProfile = data.activeProfile
+      if (data.routerMode != null) state.routerMode = data.routerMode
       renderProfileSelector()
+      renderAll() // full re-render — premium state affects header, detail, and savings
       return
     }
 
     if (data.type === 'request') {
+      // Aggregate toolsUsed from conversation history into session Set
       if (data.toolsUsed && data.toolsUsed.length) {
         data.toolsUsed.forEach(name => state.toolsUsed.add(name))
       }
@@ -103,8 +108,14 @@ export function connect() {
       } else {
         addReqToGroup(state.reqs.length - 1, data)
       }
-      state.selectedReq = state.reqs.length - 1
-      renderAll()
+      const hadSelection = state.selectedReq !== null
+      // Only auto-select if nothing is currently selected.
+      // If the user is inspecting a request, don't steal focus.
+      if (!hadSelection) {
+        state.selectedReq = state.reqs.length - 1
+      }
+      // Skip detail re-render if user is inspecting a different request
+      renderAll({ skipDetail: hadSelection })
       persistSession(state)
     }
 
@@ -116,23 +127,69 @@ export function connect() {
         req.totalEstimatedTokens = data.exactInputTokens
         req.estimatedCost = data.estimatedCost
         req.tokenCountSource = 'count_tokens'
-        renderAll()
+        // Only re-render detail if this update is for the selected request
+        const isSelected = state.selectedReq !== null && state.reqs[state.selectedReq]?.turn === data.turn
+        renderAll({ skipDetail: !isSelected })
         persistSession(state)
       }
     }
 
     if (data.type === 'response_complete') {
-      const latest = state.reqs[state.reqs.length - 1]
-      if (latest) {
-        latest.actualUsage = data.usage
-        latest.stopReason = data.stopReason
+      // Match by turn for correct correlation under concurrent requests
+      const req = data.turn != null
+        ? state.reqs.find(r => r.turn === data.turn)
+        : state.reqs[state.reqs.length - 1]
+      if (req) {
+        req.actualUsage = data.usage
+        req.stopReason = data.stopReason
         if (data.cost) {
-          latest.actualCost = data.cost
+          req.actualCost = data.cost
           addDailyCost(data.cost.totalCost)
         }
-        renderAll()
+        if (data.toolsUsed) {
+          req.toolsUsed = data.toolsUsed
+          data.toolsUsed.forEach(name => state.toolsUsed.add(name))
+        }
+        // Only re-render detail if this update is for the selected request
+        const isSelected = state.selectedReq !== null && state.reqs[state.selectedReq]?.turn === data.turn
+        renderAll({ skipDetail: !isSelected })
         persistSession(state)
       }
+    }
+
+    if (data.type === 'router_decision') {
+      const req = state.reqs.find(r => r.turn === data.turn)
+      if (req) {
+        // Only record daily savings once per turn (prevent double-counting
+        // on reconnect or repeated events)
+        const isFirstRouterData = !req.router
+        req.router = {
+          mode: data.mode,
+          eligible: data.eligible,
+          skip_reason: data.skip_reason,
+          matched_by: data.matched_by,
+          confidence: data.confidence,
+          selected_groups: data.selected_groups,
+          stripped_groups: data.stripped_groups,
+          estimated_tokens_saved: data.estimated_tokens_saved,
+          sticky_reused: data.sticky_reused,
+        }
+        // Persist daily savings (once per turn, estimated $ using cache-read rate)
+        if (isFirstRouterData && data.estimated_tokens_saved > 0) {
+          const rate = inputRate(req.model)
+          const savedCost = (data.estimated_tokens_saved / 1_000_000) * rate * 0.10
+          addDailySavings(savedCost, data.estimated_tokens_saved)
+        }
+        if (state.selectedReq !== null && state.reqs[state.selectedReq]?.turn === data.turn) {
+          renderDetail()
+        }
+        persistSession(state)
+      }
+    }
+
+    if (data.type === 'router_mode_changed') {
+      state.routerMode = data.mode
+      renderStatus()
     }
 
     if (data.type === 'profiles_updated') {

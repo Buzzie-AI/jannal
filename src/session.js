@@ -2,6 +2,7 @@
 
 const STORAGE_KEY = 'jannal_session'
 const DAILY_COSTS_KEY = 'jannal_daily_costs'
+const DAILY_SAVINGS_KEY = 'jannal_daily_savings'
 const DEBOUNCE_MS = 500
 
 let persistTimeout = null
@@ -107,6 +108,31 @@ export function getDailyCost() {
     const data = JSON.parse(localStorage.getItem(DAILY_COSTS_KEY) || '{}')
     return data[today] || 0
   } catch (e) { return 0 }
+}
+
+export function addDailySavings(cost, tokens) {
+  if ((!cost || cost <= 0) && (!tokens || tokens <= 0)) return
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    const data = JSON.parse(localStorage.getItem(DAILY_SAVINGS_KEY) || '{}')
+    if (!data[today]) data[today] = { cost: 0, tokens: 0 }
+    // Migrate from old scalar format
+    if (typeof data[today] === 'number') data[today] = { cost: data[today], tokens: 0 }
+    data[today].cost += cost || 0
+    data[today].tokens += tokens || 0
+    localStorage.setItem(DAILY_SAVINGS_KEY, JSON.stringify(data))
+  } catch (e) { /* ignore */ }
+}
+
+export function getDailySavings() {
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    const data = JSON.parse(localStorage.getItem(DAILY_SAVINGS_KEY) || '{}')
+    const entry = data[today]
+    if (!entry) return { cost: 0, tokens: 0 }
+    if (typeof entry === 'number') return { cost: entry, tokens: 0 }
+    return { cost: entry.cost || 0, tokens: entry.tokens || 0 }
+  } catch (e) { return { cost: 0, tokens: 0 } }
 }
 
 export function downloadExport(content, filename) {

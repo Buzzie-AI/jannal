@@ -1,7 +1,7 @@
 import './styles.css'
 import { state } from './state.js'
 import { connect, rebuildGroups } from './ws.js'
-import { renderAll, renderContextBar, renderReqList, renderDetail, copyClaudeCommand } from './render.js'
+import { renderAll, renderContextBar, renderReqList, renderDetail, renderStatus, copyClaudeCommand } from './render.js'
 import { openModal, closeModal, setModalView, toggleAllTools, toggleGroupTools, toggleGroupAccordion, toggleGroupCheckbox, onToolToggle, saveCurrentAsProfile, createProfileFromThisTurn, filterModalContent, copyModalContent } from './modal.js'
 import { onProfileChange } from './profiles.js'
 import { restoreSession, exportSessionJSON, exportSessionCSV, downloadExport, persistSession } from './session.js'
@@ -76,9 +76,9 @@ window.toggleGroupCheckbox = toggleGroupCheckbox
 window.onToolToggle = onToolToggle
 window.saveCurrentAsProfile = saveCurrentAsProfile
 window.createProfileFromThisTurn = createProfileFromThisTurn
+window.copyClaudeCommand = copyClaudeCommand
 window.filterModalContent = filterModalContent
 window.copyModalContent = copyModalContent
-window.copyClaudeCommand = copyClaudeCommand
 
 // ─── Global search ──────────────────────────────────────────────────────────
 
@@ -153,6 +153,44 @@ document.addEventListener('click', (e) => {
   if (menu?.classList.contains('open') && dropdown && !dropdown.contains(e.target)) {
     menu.classList.remove('open')
   }
+  // Close router popover on outside click
+  const routerWrapper = document.querySelector('.router-badge-wrapper')
+  const routerPopover = document.getElementById('routerPopover')
+  if (routerPopover?.classList.contains('open') && routerWrapper && !routerWrapper.contains(e.target)) {
+    routerPopover.classList.remove('open')
+  }
+})
+
+// ─── Router mode popover ─────────────────────────────────────────────────────
+
+document.getElementById('routerBadge')?.addEventListener('click', (e) => {
+  e.stopPropagation()
+  document.getElementById('routerPopover')?.classList.toggle('open')
+})
+
+document.getElementById('routerPopover')?.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.router-popover-opt')
+  if (!btn) return
+  if (!state.premium) return // Premium required for mode changes
+  const mode = btn.dataset.mode
+  if (mode === state.routerMode) {
+    document.getElementById('routerPopover')?.classList.remove('open')
+    return
+  }
+  try {
+    const resp = await fetch('/api/router/mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    })
+    if (resp.ok) {
+      state.routerMode = mode
+      renderStatus()
+    }
+  } catch (err) {
+    console.error('Failed to set router mode:', err)
+  }
+  document.getElementById('routerPopover')?.classList.remove('open')
 })
 
 document.getElementById('modalOverlay').addEventListener('click', (e) => {

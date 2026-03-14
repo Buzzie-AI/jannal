@@ -1,15 +1,17 @@
 import { state } from './state.js'
-import { getSegColor, getSegLabel, fmt, fmtCost, escapeHtml } from './utils.js'
-import { getDailyCost } from './session.js'
+import { getSegColor, getSegLabel, fmt, fmtCost, inputRate, escapeHtml } from './utils.js'
+import { getDailyCost, getDailySavings } from './session.js'
 
 // ─── Render ─────────────────────────────────────────────────────────────────
 
-export function renderAll() {
+export function renderAll(opts = {}) {
   renderStatus()
   renderContextBar()
   renderTokenChart()
   renderReqList()
-  renderDetail()
+  // Only re-render detail if the selected request's data changed,
+  // or if explicitly requested (e.g. user clicked a different request).
+  if (!opts.skipDetail) renderDetail()
   renderExportButton()
 }
 
@@ -26,42 +28,59 @@ export function renderStatus() {
   const text = document.getElementById('statusText')
   text.textContent = state.connected ? 'Connected' : 'Disconnected'
   text.style.color = state.connected ? 'var(--green)' : 'var(--red)'
-  document.getElementById('reqBadge').textContent = `Req ${state.reqs.length}`
+  const reqBadge = document.getElementById('reqBadge')
+  if (reqBadge) reqBadge.textContent = `Req ${state.reqs.length}`
 
-  // Session cost
-  let totalCost = 0
-  for (const t of state.reqs) {
-    if (t.actualCost) totalCost += t.actualCost.totalCost
-    else if (t.estimatedCost) totalCost += t.estimatedCost.totalCost
-  }
-  document.getElementById('sessionCost').textContent = fmtCost(totalCost)
+  // Daily metrics (persisted across eviction/reload/reconnect)
+  const dailyCost = getDailyCost()
+  const costEl = document.getElementById('dailyCost')
+  if (costEl) costEl.textContent = `Cost: ${fmtCost(dailyCost)}`
 
-  // Tokens saved badge (when filtering active)
-  const tokensSavedBadge = document.getElementById('tokensSavedBadge')
-  if (state.activeProfile !== 'All Tools') {
-    let totalSaved = 0
-    for (const t of state.reqs) {
-      if (t.filteringActive && t.tokensSaved) totalSaved += t.tokensSaved
-    }
-    if (totalSaved > 0) {
-      tokensSavedBadge.style.display = 'inline'
-      tokensSavedBadge.textContent = `~${fmt(totalSaved)} saved`
-      tokensSavedBadge.title = 'Tokens saved by tool filtering this session'
+  const savedEl = document.getElementById('dailySaved')
+  if (savedEl) {
+    if (!state.premium) {
+      savedEl.textContent = 'Saved: Pro'
+      savedEl.className = 'daily-saved premium-locked'
+      savedEl.title = 'Savings intelligence requires Pro'
     } else {
-      tokensSavedBadge.style.display = 'none'
+      const { cost: savedCost, tokens: savedTokens } = getDailySavings()
+      const tokenStr = savedTokens > 0 ? ` (${fmt(savedTokens)})` : ''
+      savedEl.textContent = `Saved: ${fmtCost(savedCost)}${tokenStr}`
+      savedEl.className = 'daily-saved'
+      savedEl.classList.toggle('has-savings', savedCost > 0)
+      savedEl.title = 'Estimated daily savings from router intelligence'
     }
-  } else {
-    tokensSavedBadge.style.display = 'none'
   }
 
-  // Daily cost
-  const daily = getDailyCost()
-  const dailyEl = document.getElementById('dailyCost')
-  if (daily > 0) {
-    dailyEl.style.display = 'block'
-    dailyEl.textContent = `Today: ${fmtCost(daily)}`
-  } else {
-    dailyEl.style.display = 'none'
+  // Router badge
+  const badge = document.getElementById('routerBadge')
+  if (badge) {
+    if (!state.premium) {
+      badge.textContent = 'Router Pro'
+      badge.className = 'router-badge premium-locked'
+      // Disable popover options
+      const popover = document.getElementById('routerPopover')
+      if (popover) {
+        for (const btn of popover.querySelectorAll('.router-popover-opt')) {
+          btn.classList.add('premium-locked')
+          btn.classList.remove('active')
+        }
+      }
+    } else {
+      const mode = state.routerMode || 'off'
+      const labels = { off: 'Router Off', shadow: 'Router Shadow', auto: 'Router Auto' }
+      badge.textContent = labels[mode] || 'Router'
+      badge.className = `router-badge router-badge--${mode}`
+
+      // Mark active option in popover
+      const popover = document.getElementById('routerPopover')
+      if (popover) {
+        for (const btn of popover.querySelectorAll('.router-popover-opt')) {
+          btn.classList.toggle('active', btn.dataset.mode === mode)
+          btn.classList.remove('premium-locked')
+        }
+      }
+    }
   }
 }
 
@@ -170,8 +189,7 @@ function getClaudeCommand() {
 }
 
 export function copyClaudeCommand() {
-  const cmd = getClaudeCommand()
-  navigator.clipboard.writeText(cmd).then(() => {
+  navigator.clipboard.writeText(getClaudeCommand()).then(() => {
     const btn = document.getElementById('copyCommandBtn')
     if (btn) {
       const orig = btn.textContent
@@ -186,7 +204,7 @@ export function renderReqList() {
   const el = document.getElementById('reqList')
   if (state.reqs.length === 0) {
     const cmd = getClaudeCommand()
-    el.innerHTML = `<div class="empty"><div class="empty-icon waiting">&#x1F50D;</div><h2>Waiting for requests...</h2><p>Start Claude Code with:<br><code id="claudeCommand" style="color:var(--cyan);font-size:11px">${cmd}</code> <button id="copyCommandBtn" class="copy-command-btn" onclick="copyClaudeCommand()" title="Copy to clipboard">Copy</button></p></div>`
+    el.innerHTML = `<div class="empty"><div class="empty-icon waiting">&#x1F50D;</div><h2>Waiting for requests...</h2><p>Start Claude Code with:<br><code style="color:var(--cyan);font-size:11px">${cmd}</code> <button id="copyCommandBtn" class="copy-command-btn" onclick="copyClaudeCommand()" title="Copy to clipboard">Copy</button></p></div>`
     return
   }
 
@@ -197,11 +215,16 @@ export function renderReqList() {
     toggleBtn.classList.toggle('active', state.groupView)
   }
 
+  // Preserve scroll position across re-renders
+  const scrollTop = el.scrollTop
+
   if (state.groupView && Object.keys(state.groups).length > 0) {
     renderGroupedList(el)
   } else {
     renderFlatList(el)
   }
+
+  el.scrollTop = scrollTop
 }
 
 function renderFlatList(el) {
@@ -217,28 +240,29 @@ function renderReqCard(i) {
   const total = t.actualUsage ? t.actualUsage.input_tokens : t.totalEstimatedTokens
   const fillPct = Math.min((total / t.budget) * 100, 100)
   const color = fillPct > 95 ? 'var(--red)' : fillPct > 80 ? 'var(--orange)' : 'var(--green)'
-  const time = new Date(t.timestamp).toLocaleTimeString()
 
-  let html = `<div class="req-card${i === state.selectedReq ? ' selected' : ''}" onclick="selectReq(${i})" title="Each request is one API call to Anthropic. Click to see its full context breakdown.">`
+  // Short model name: claude-opus-4-6 → opus-4-6, claude-haiku-4-5-20251001 → haiku-4-5
+  const shortModel = t.model.replace('claude-', '').replace(/-\d{8,}$/, '')
+
   const tokenLabel = t.actualUsage ? fmt(t.actualUsage.input_tokens) : (t.tokenCountSource === 'count_tokens' ? fmt(t.totalEstimatedTokens) : '~' + fmt(t.totalEstimatedTokens))
+
+  // Compact in/out display
+  let ioLabel = ''
+  if (t.actualUsage) {
+    ioLabel = `${fmt(t.actualUsage.input_tokens)} in / ${fmt(t.actualUsage.output_tokens)} out`
+  }
+
+  const cost = t.actualCost ? fmtCost(t.actualCost.totalCost) : t.estimatedCost ? '~' + fmtCost(t.estimatedCost.totalCost) : ''
+
+  let html = `<div class="req-card${i === state.selectedReq ? ' selected' : ''}" onclick="selectReq(${i})">`
+  // Row 1: Req N + token size + mini bar
   html += `<div class="req-card-head"><span class="req-label">Req ${t.turn}</span><span class="req-tokens" style="color:${color}">${tokenLabel}</span></div>`
   html += `<div class="req-mini-bar"><div class="req-mini-fill" style="width:${fillPct}%;background:${color}"></div></div>`
-  html += `<div class="req-meta"><span>${t.model}</span><span>${t.segments.length} segs</span><span>${time}</span></div>`
-
-  if (t.actualUsage) {
-    html += `<div class="req-actual">Actual: ${t.actualUsage.input_tokens.toLocaleString()} in / ${t.actualUsage.output_tokens.toLocaleString()} out</div>`
-  }
-
-  if (t.actualCost) {
-    html += `<div class="req-cost" style="color:var(--amber)">${fmtCost(t.actualCost.totalCost)}</div>`
-  } else if (t.estimatedCost) {
-    html += `<div class="req-cost" style="color:var(--text3)">~${fmtCost(t.estimatedCost.totalCost)}</div>`
-  }
-
-  if (t.filteringActive) {
-    html += `<div style="margin-top:2px;font-size:9px;color:var(--orange);font-weight:600">Filtered: -${t.removedTools.length} tools</div>`
-  }
-
+  // Row 2: model | in/out | cost
+  html += `<div class="req-meta"><span>${shortModel}</span>`
+  if (ioLabel) html += `<span class="req-io">${ioLabel}</span>`
+  if (cost) html += `<span class="req-cost-inline">${cost}</span>`
+  html += `</div>`
   html += `</div>`
   return html
 }
@@ -306,15 +330,16 @@ function renderGroupedList(el) {
         html += `<span>${model} · ${session.reqIndices.length} req${session.reqIndices.length !== 1 ? 's' : ''}</span>`
         html += `</div>`
 
-        for (const ri of session.reqIndices) {
-          html += renderReqCard(ri)
+        // Newest requests on top within each session
+        for (let k = session.reqIndices.length - 1; k >= 0; k--) {
+          html += renderReqCard(session.reqIndices[k])
         }
         sessionNum++
       }
     } else {
-      // Single session: just render requests
-      for (const ri of group.reqIndices) {
-        html += renderReqCard(ri)
+      // Single session: just render requests, newest on top
+      for (let k = group.reqIndices.length - 1; k >= 0; k--) {
+        html += renderReqCard(group.reqIndices[k])
       }
     }
 
@@ -356,7 +381,7 @@ export function renderDetail() {
       html += `<div class="warning-box">`
       html += `<div class="warning-box-title">System prompt is large</div>`
       html += `<div class="usage-row"><span class="usage-label">System prompt</span><span class="usage-value" style="color:var(--orange)">${fmt(systemSeg.tokens)} tokens (${systemPct.toFixed(1)}% of context)</span></div>`
-      html += `<div style="margin-top:6px;font-size:10px;color:var(--text3)">Consider trimming or splitting to free context for conversation.</div>`
+      html += `<div style="margin-top:6px;font-size:10px;color:var(--text3)">Consider trimming to free context for conversation.</div>`
       html += `</div>`
     }
   }
@@ -374,15 +399,74 @@ export function renderDetail() {
     html += `</div>`
   }
 
+  // Router decision (premium gate — short-circuit before rendering any router details)
+  if (!state.premium) {
+    html += `<div class="router-box premium-locked">`
+    html += `<div class="router-box-title">Router Intelligence</div>`
+    html += `<div class="premium-locked-msg">Intelligent routing, savings analysis, and auto-filtering.<br>Available in Pro.</div>`
+    html += `</div>`
+  } else if (req.router) {
+    const r = req.router
+    const modeLabel = r.mode === 'shadow' ? 'Shadow (observe only)' : r.mode === 'auto' ? 'Auto' : r.mode || 'off'
+
+    html += `<div class="router-box">`
+    html += `<div class="router-box-title">Router Decision</div>`
+    html += `<div class="usage-row"><span class="usage-label">Mode</span><span class="usage-value router-mode-${r.mode}">${modeLabel}</span></div>`
+
+    if (r.eligible) {
+      const isShadow = r.mode === 'shadow'
+      html += `<div class="usage-row"><span class="usage-label">Matched by</span><span class="usage-value" style="color:var(--cyan)">${escapeHtml(r.matched_by || '\u2014')}</span></div>`
+      if (r.confidence != null) {
+        const confColor = r.confidence >= 0.9 ? 'var(--green)' : r.confidence >= 0.7 ? 'var(--amber)' : 'var(--orange)'
+        html += `<div class="usage-row"><span class="usage-label">Confidence</span><span class="usage-value" style="color:${confColor}">${(r.confidence * 100).toFixed(0)}%</span></div>`
+      }
+      if (r.selected_groups && r.selected_groups.length > 0) {
+        const groups = r.selected_groups.filter(g => g !== 'core').join(', ') || '\u2014'
+        html += `<div class="usage-row"><span class="usage-label">${isShadow ? 'Would keep' : 'Selected groups'}</span><span class="usage-value" style="color:var(--text2);font-size:10px">${escapeHtml(groups)}</span></div>`
+      }
+      if (r.stripped_groups && r.stripped_groups.length > 0) {
+        html += `<div class="usage-row"><span class="usage-label">${isShadow ? 'Would strip' : 'Stripped groups'}</span><span class="usage-value" style="color:var(--text3);font-size:10px">${escapeHtml(r.stripped_groups.join(', '))}</span></div>`
+      }
+      if (r.estimated_tokens_saved > 0) {
+        const pct = req.totalEstimatedTokens > 0 ? ((r.estimated_tokens_saved / req.totalEstimatedTokens) * 100).toFixed(1) : '?'
+        html += `<div class="usage-row"><span class="usage-label">${isShadow ? 'Potential savings' : 'Est. savings'}</span><span class="usage-value" style="color:var(--green)">~${fmt(r.estimated_tokens_saved)} tokens (${pct}%)</span></div>`
+      }
+      if (r.sticky_reused) {
+        html += `<div style="margin-top:4px;font-size:9px;color:var(--purple)">Sticky route reused</div>`
+      }
+    } else {
+      const reason = r.skip_reason === 'router_off' ? 'Router is off'
+        : r.skip_reason === 'below_threshold' ? 'Below threshold'
+        : r.skip_reason === 'no_request_data' ? 'No request data'
+        : (r.skip_reason || 'Skipped')
+      html += `<div class="usage-row"><span class="usage-label">Status</span><span class="usage-value" style="color:var(--text3)">${escapeHtml(reason)}</span></div>`
+    }
+
+    if (r.mode === 'shadow') {
+      html += `<div class="router-shadow-note">All tools forwarded \u2014 shadow mode</div>`
+    }
+    html += `</div>`
+  }
+
   // Usage + cost comparison
   if (req.actualUsage) {
-    const diff = req.actualUsage.input_tokens - req.totalEstimatedTokens
-    const diffPct = ((diff / req.actualUsage.input_tokens) * 100).toFixed(1)
+    const u = req.actualUsage
+    const cacheRead = u.cache_read_input_tokens || 0
+    const cacheCreate = u.cache_creation_input_tokens || 0
+    const hasCacheData = cacheRead > 0 || cacheCreate > 0
+    const diff = u.input_tokens - req.totalEstimatedTokens
+    const diffPct = u.input_tokens ? ((diff / u.input_tokens) * 100).toFixed(1) : '0.0'
     html += `<div class="usage-box">`
     html += `<div class="usage-row"><span class="usage-label">Estimated input</span><span class="usage-value estimated">~${req.totalEstimatedTokens.toLocaleString()}</span></div>`
-    html += `<div class="usage-row"><span class="usage-label">Actual input</span><span class="usage-value actual">${req.actualUsage.input_tokens.toLocaleString()}</span></div>`
+    html += `<div class="usage-row"><span class="usage-label">Actual input</span><span class="usage-value actual">${u.input_tokens.toLocaleString()}</span></div>`
+    if (hasCacheData) {
+      html += `<div class="usage-row"><span class="usage-label" style="padding-left:12px">Cache read</span><span class="usage-value" style="color:var(--green)">${cacheRead.toLocaleString()}</span></div>`
+      html += `<div class="usage-row"><span class="usage-label" style="padding-left:12px">Cache write</span><span class="usage-value" style="color:var(--cyan,var(--blue))">${cacheCreate.toLocaleString()}</span></div>`
+      const uncached = Math.max(0, u.input_tokens - cacheRead - cacheCreate)
+      html += `<div class="usage-row"><span class="usage-label" style="padding-left:12px">Uncached</span><span class="usage-value">${uncached.toLocaleString()}</span></div>`
+    }
     html += `<div class="usage-row"><span class="usage-label">Estimation error</span><span class="usage-value" style="color:${Math.abs(parseFloat(diffPct)) < 15 ? 'var(--green)' : 'var(--orange)'}">${diff > 0 ? '+' : ''}${diff.toLocaleString()} (${diffPct}%)</span></div>`
-    html += `<div class="usage-row"><span class="usage-label">Output tokens</span><span class="usage-value">${req.actualUsage.output_tokens.toLocaleString()}</span></div>`
+    html += `<div class="usage-row"><span class="usage-label">Output tokens</span><span class="usage-value">${u.output_tokens.toLocaleString()}</span></div>`
     if (req.actualCost) {
       html += `<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">`
       html += `<div class="usage-row"><span class="usage-label">Input cost</span><span class="usage-value" style="color:var(--amber)">${fmtCost(req.actualCost.inputCost)}</span></div>`
@@ -397,6 +481,16 @@ export function renderDetail() {
     html += `<div class="usage-row"><span class="usage-label">Input tokens ${isExact ? '(exact)' : '(est.)'}</span><span class="usage-value" style="color:${isExact ? 'var(--green)' : 'var(--text2)'}">${isExact ? '' : '~'}${req.totalEstimatedTokens.toLocaleString()}</span></div>`
     html += `<div class="usage-row"><span class="usage-label">Input cost ${isExact ? '' : '(est.)'}</span><span class="usage-value" style="color:${isExact ? 'var(--amber)' : 'var(--text3)'}">${isExact ? '' : '~'}${fmtCost(req.estimatedCost.totalCost)}</span></div>`
     if (isExact) html += `<div style="margin-top:4px;font-size:9px;color:var(--text3)">via count_tokens API</div>`
+    html += `</div>`
+  }
+
+  // Tool-use summary
+  if (req.toolsUsed && req.toolsUsed.length > 0) {
+    html += `<div class="usage-box">`
+    html += `<div style="font-size:10px;font-weight:700;color:var(--cyan);margin-bottom:4px">Tools Used (${req.toolsUsed.length})</div>`
+    for (const name of req.toolsUsed) {
+      html += `<div style="font-size:10px;color:var(--text2);padding:1px 0">${escapeHtml(name)}</div>`
+    }
     html += `</div>`
   }
 

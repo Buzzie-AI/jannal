@@ -17,28 +17,39 @@
 <div class="header">
   <div class="header-left">
     <img class="logo" src="/logo.png" alt="Jannal">
-    <div><h1>Jannal</h1></div>
+    <div class="header-brand">
+      <h1>Jannal</h1>
+      <div class="status">
+        <div class="status-dot disconnected" id="statusDot"></div>
+        <span id="statusText" style="color:var(--text3)">Connecting...</span>
+      </div>
+    </div>
   </div>
   <div class="header-right">
     <div class="global-search-wrapper">
-      <input class="global-search" type="text" placeholder="Search all requests..." id="globalSearch" />
+      <input class="global-search" type="text" placeholder="Search requests..." id="globalSearch" />
       <div class="global-search-results" id="globalSearchResults"></div>
     </div>
+    <div class="hdr-sep"></div>
     <select class="profile-select" id="profileSelect">
       <option value="All Tools">All Tools</option>
     </select>
     <span class="filter-badge" id="filterBadge" style="display:none">FILTERING</span>
-    <div class="status">
-      <div class="status-dot disconnected" id="statusDot"></div>
-      <span id="statusText" style="color:var(--text3)">Connecting...</span>
+    <div class="router-badge-wrapper">
+      <span class="router-badge" id="routerBadge"></span>
+      <div class="router-popover" id="routerPopover">
+        <div class="router-popover-title">Router Mode</div>
+        <button class="router-popover-opt" data-mode="off"><span class="router-opt-dot router-opt-dot--off"></span>Off<span class="router-opt-desc">Router disabled</span></button>
+        <button class="router-popover-opt" data-mode="shadow"><span class="router-opt-dot router-opt-dot--shadow"></span>Shadow<span class="router-opt-desc">Observe only, no filtering</span></button>
+        <button class="router-popover-opt" data-mode="auto"><span class="router-opt-dot router-opt-dot--auto"></span>Auto<span class="router-opt-desc">Route and filter tools</span></button>
+      </div>
     </div>
-    <div class="req-badge" id="reqBadge">Req 0</div>
-    <span class="tokens-saved-badge" id="tokensSavedBadge" style="display:none"></span>
-    <div class="session-cost" id="sessionCost">$0.0000</div>
-    <div class="daily-cost" id="dailyCost" style="display:none" title="Total cost today"></div>
+    <div class="hdr-sep"></div>
+    <div class="daily-saved" id="dailySaved" title="Estimated daily savings from router intelligence">Saved: $0.00</div>
+    <div class="daily-cost" id="dailyCost" title="Total cost today">Cost: $0.00</div>
     <button class="theme-toggle" id="themeToggle" title="Toggle dark/light mode" aria-label="Toggle theme">
-      <svg id="themeIconMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      <svg id="themeIconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      <svg id="themeIconMoon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg id="themeIconSun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </button>
   </div>
 </div>

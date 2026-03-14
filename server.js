@@ -60,9 +60,16 @@ function getModelPricing(model) {
   return { input: 3, output: 15 }; // default to sonnet pricing
 }
 
-function calculateCost(inputTokens, outputTokens, model) {
+function calculateCost(inputTokens, outputTokens, model, cacheCreationTokens = 0, cacheReadTokens = 0) {
   const pricing = getModelPricing(model);
-  const inputCost = (inputTokens / 1_000_000) * pricing.input;
+  // Non-cached input tokens = total - cache_creation - cache_read
+  const baseInputTokens = Math.max(0, inputTokens - cacheCreationTokens - cacheReadTokens);
+  const baseCost = (baseInputTokens / 1_000_000) * pricing.input;
+  // Cache writes cost 25% more than base input
+  const cacheWriteCost = (cacheCreationTokens / 1_000_000) * pricing.input * 1.25;
+  // Cache reads cost 10% of base input
+  const cacheReadCost = (cacheReadTokens / 1_000_000) * pricing.input * 0.10;
+  const inputCost = baseCost + cacheWriteCost + cacheReadCost;
   const outputCost = (outputTokens / 1_000_000) * pricing.output;
   return { inputCost, outputCost, totalCost: inputCost + outputCost };
 }
@@ -138,12 +145,39 @@ function applyToolFilter(tools, profileName) {
 
 loadProfiles();
 
+// ─── App config ──────────────────────────────────────────────────────────────
+
+const { isPremium, loadAppConfig, getAppConfig } = require("./lib/app-config");
+loadAppConfig();
+
+// ─── Router telemetry ────────────────────────────────────────────────────────
+
+const routerLog = require("./router/log");
+if (isPremium()) routerLog.initDataDir();
+
+// ─── Router ──────────────────────────────────────────────────────────────────
+
+const router = require("./router/index");
+
 // ─── Group tracking ─────────────────────────────────────────────────────────
 
 let groupCounter = 0;
-let activeGroupId = null;
 let lastRequestTime = 0;
-const GAP_THRESHOLD = 45000; // 45 seconds
+let lastMainSessionKey = null; // sessionHash of most recently active main session
+const GAP_THRESHOLD = 45000;   // 45 seconds
+const NEW_MAIN_MSG_THRESHOLD = 20; // messages above this = likely main session, not subagent
+const MAX_TRACKED_CONVERSATIONS = 10;
+
+// Track concurrent conversations by sessionHash (stable after billing header fix).
+// Each session gets its own persistent group. Subagents (different sessionHash,
+// low msgCount) attach to their parent via lastMainSessionKey — only main-session
+// requests update this value, so subagents never misdirect each other.
+//
+// Known limitation: under true concurrent main-session activity, a subagent can
+// attach to the wrong parent group (the most recently active main session, not
+// necessarily the one that spawned it). Without parent-child tracking in the
+// Anthropic API, this is the best available heuristic.
+const conversationGroups = new Map(); // sessionHash → { groupId, lastHumanText, lastSeen }
 
 function simpleHash(str) {
   let hash = 5381;
@@ -153,19 +187,240 @@ function simpleHash(str) {
   return hash.toString(36);
 }
 
+/**
+ * Compute a stable session hash from model + system prompt text content.
+ *
+ * Includes the model name to distinguish main (opus) from subagent (sonnet)
+ * even when they share the same system prompt prefix (e.g. billing headers).
+ * Uses a 5000-char window (not 500) to capture content PAST common prefixes
+ * like x-anthropic-billing-header that are identical across all requests.
+ * Ignores metadata (cache_control, TTLs) that changes per request.
+ */
 function getSessionHash(body) {
   if (!body.system) return "no-system";
-  const text = typeof body.system === "string" ? body.system : JSON.stringify(body.system);
-  return simpleHash(text.slice(0, 500));
+  let text;
+  if (typeof body.system === "string") {
+    text = body.system.trim();
+  } else if (Array.isArray(body.system)) {
+    text = body.system
+      .filter((b) => b.type === "text" && b.text)
+      .map((b) => b.text.trim())
+      .join("\n")
+      .trim();
+  } else {
+    return "no-system";
+  }
+  if (!text) return "no-system";
+  // Strip the per-request billing header checksum (cch= changes every request)
+  text = text.replace(/^x-anthropic-billing-header:[^\n]*\n?/, "");
+  const model = body.model || "unknown";
+  return simpleHash(model + "|" + text.slice(0, 5000));
 }
 
-function assignGroup() {
-  const now = Date.now();
-  if (activeGroupId === null || (now - lastRequestTime) > GAP_THRESHOLD) {
-    activeGroupId = groupCounter++;
+/**
+ * Strip Claude Code infrastructure tags from user message text.
+ * Used by grouping helpers and router intent extraction for consistent text cleaning.
+ */
+function stripInfrastructureTags(text) {
+  return text
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+    .replace(/<command-message>[\s\S]*?<\/command-message>/g, "")
+    .replace(/<command-name>[\s\S]*?<\/command-name>/g, "")
+    .replace(/<command-args>[\s\S]*?<\/command-args>/g, "")
+    .replace(/<local-command-stdout>[\s\S]*?<\/local-command-stdout>/g, "")
+    .replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/g, "")
+    .trim();
+}
+
+/**
+ * Walk body.messages backwards to find the most recent human-authored text.
+ * Skips tool_result-only user messages (which are tool output, not human input).
+ * Strips Claude Code infrastructure tags.
+ * Returns first 200 chars for comparison, or null if no human text found.
+ */
+function extractLastHumanText(body) {
+  if (!body.messages) return null;
+  for (let i = body.messages.length - 1; i >= 0; i--) {
+    const msg = body.messages[i];
+    if (msg.role !== "user") continue;
+    if (typeof msg.content === "string") {
+      const cleaned = stripInfrastructureTags(msg.content);
+      if (cleaned.length > 0) return cleaned.slice(0, 200);
+      continue;
+    }
+    if (Array.isArray(msg.content)) {
+      const textParts = msg.content
+        .filter((b) => b.type === "text" && b.text)
+        .map((b) => b.text);
+      if (textParts.length === 0) continue; // tool_result-only → skip
+      const combined = stripInfrastructureTags(textParts.join("\n"));
+      if (combined.length > 0) return combined.slice(0, 200);
+    }
   }
+  return null;
+}
+
+/**
+ * Walk body.messages forwards to find the FIRST human-authored text.
+ * This is the original user prompt that started the conversation.
+ * It's rock-stable within a conversation (never changes) and only
+ * differs when a genuinely new conversation begins.
+ */
+function extractFirstHumanText(body) {
+  if (!body.messages) return null;
+  for (let i = 0; i < body.messages.length; i++) {
+    const msg = body.messages[i];
+    if (msg.role !== "user") continue;
+    if (typeof msg.content === "string") {
+      const cleaned = stripInfrastructureTags(msg.content);
+      if (cleaned.length > 0) return cleaned.slice(0, 200);
+      continue;
+    }
+    if (Array.isArray(msg.content)) {
+      const textParts = msg.content
+        .filter((b) => b.type === "text" && b.text)
+        .map((b) => b.text);
+      if (textParts.length === 0) continue;
+      const combined = stripInfrastructureTags(textParts.join("\n"));
+      if (combined.length > 0) return combined.slice(0, 200);
+    }
+  }
+  return null;
+}
+
+/**
+ * Assign a group (turn) ID to a request.
+ *
+ * Tracks concurrent conversations by sessionHash (model + system prompt text,
+ * billing header stripped). Each session gets its own persistent group.
+ *
+ * Subagents (different sessionHash, low msg count) attach to their parent
+ * conversation via lastMainSessionKey — only main-session requests (high msg
+ * count) update this value, preventing subagents from misdirecting each other.
+ *
+ * New group triggers:
+ * - Time gap > 45s (clears all tracked conversations)
+ * - User types a new message after an end_turn response
+ * - First request from a previously unseen session (high msg count)
+ *
+ * Response-aware turn boundaries: after tool_use, a changed lastHumanText
+ * is a continuation (tool results appended), not a new user turn. Only
+ * after end_turn does changed text mean the user typed something new.
+ */
+function assignGroup(body) {
+  const now = Date.now();
+  const msgCount = (body.messages || []).length;
+  const model = body.model || "unknown";
+  const gap = now - lastRequestTime;
+  const sessionHash = getSessionHash(body);
+  const currentLastText = extractLastHumanText(body);
+
   lastRequestTime = now;
-  return activeGroupId;
+
+  // Time gap: clear all tracked conversations, start fresh
+  if (gap > GAP_THRESHOLD || conversationGroups.size === 0) {
+    conversationGroups.clear();
+    const groupId = groupCounter++;
+    conversationGroups.set(sessionHash, {
+      groupId,
+      lastHumanText: currentLastText,
+      lastSeen: now,
+      lastStopReason: null, // no previous response yet
+    });
+    if (msgCount > NEW_MAIN_MSG_THRESHOLD) {
+      lastMainSessionKey = sessionHash;
+    }
+    console.log(`  [group] NEW group=${groupId} reason=gap(${gap}ms) model=${model} msgs=${msgCount}`);
+    return groupId;
+  }
+
+  // Known session: look up by sessionHash
+  if (conversationGroups.has(sessionHash)) {
+    const conv = conversationGroups.get(sessionHash);
+    conv.lastSeen = now;
+
+    // Check if user typed a new message in this session
+    const lastTextChanged = currentLastText !== null
+      && conv.lastHumanText !== null
+      && currentLastText !== conv.lastHumanText;
+
+    if (lastTextChanged) {
+      conv.lastHumanText = currentLastText;
+
+      if (conv.lastStopReason === "end_turn") {
+        // Previous response finished (end_turn) and text changed → genuine new user message
+        const groupId = groupCounter++;
+        conv.groupId = groupId;
+        if (msgCount > NEW_MAIN_MSG_THRESHOLD) {
+          lastMainSessionKey = sessionHash;
+        }
+        console.log(`  [group] NEW group=${groupId} reason=new_user_msg model=${model} msgs=${msgCount} prevStop=end_turn`);
+        return groupId;
+      }
+
+      if (conv.lastStopReason === "tool_use") {
+        // Previous response used tools → text changed because tool results were appended, not new user input
+        if (msgCount > NEW_MAIN_MSG_THRESHOLD) {
+          lastMainSessionKey = sessionHash;
+        }
+        console.log(`  [group] SAME group=${conv.groupId} reason=continuation_after_tool_use model=${model} msgs=${msgCount}`);
+        return conv.groupId;
+      }
+
+      // Unknown or null stop reason (first request, or response not yet received) → conservative: new group
+      const groupId = groupCounter++;
+      conv.groupId = groupId;
+      if (msgCount > NEW_MAIN_MSG_THRESHOLD) {
+        lastMainSessionKey = sessionHash;
+      }
+      console.log(`  [group] NEW group=${groupId} reason=new_user_msg model=${model} msgs=${msgCount} prevStop=${conv.lastStopReason || "none"}`);
+      return groupId;
+    }
+
+    if (currentLastText !== null) conv.lastHumanText = currentLastText;
+    if (msgCount > NEW_MAIN_MSG_THRESHOLD) {
+      lastMainSessionKey = sessionHash;
+    }
+    console.log(`  [group] SAME group=${conv.groupId} reason=same_conv model=${model} msgs=${msgCount}`);
+    return conv.groupId;
+  }
+
+  // New sessionHash, high msg count → new main conversation
+  if (msgCount > NEW_MAIN_MSG_THRESHOLD) {
+    const groupId = groupCounter++;
+    conversationGroups.set(sessionHash, {
+      groupId,
+      lastHumanText: currentLastText,
+      lastSeen: now,
+      lastStopReason: null,
+    });
+    lastMainSessionKey = sessionHash;
+
+    // Evict oldest if map too large
+    if (conversationGroups.size > MAX_TRACKED_CONVERSATIONS) {
+      let oldestKey = null, oldestTime = Infinity;
+      for (const [key, val] of conversationGroups) {
+        if (val.lastSeen < oldestTime) { oldestTime = val.lastSeen; oldestKey = key; }
+      }
+      if (oldestKey) conversationGroups.delete(oldestKey);
+    }
+
+    console.log(`  [group] NEW group=${groupId} reason=new_conv model=${model} msgs=${msgCount}`);
+    return groupId;
+  }
+
+  // Subagent: attach to the most recently active MAIN session's group
+  if (lastMainSessionKey && conversationGroups.has(lastMainSessionKey)) {
+    const parentGroup = conversationGroups.get(lastMainSessionKey).groupId;
+    console.log(`  [group] SAME group=${parentGroup} reason=subagent(msgs=${msgCount}) model=${model}`);
+    return parentGroup;
+  }
+
+  // Fallback: no tracked main session yet
+  const latest = [...conversationGroups.values()].sort((a, b) => b.lastSeen - a.lastSeen)[0];
+  const fallbackGroup = latest ? latest.groupId : groupCounter++;
+  console.log(`  [group] SAME group=${fallbackGroup} reason=subagent_fallback(msgs=${msgCount}) model=${model}`);
+  return fallbackGroup;
 }
 
 // ─── Request analysis ────────────────────────────────────────────────────────
@@ -254,10 +509,44 @@ function analyzeRequest(body) {
   const reqId = reqCounter++;
   const model = body.model || "unknown";
   const sessionHash = getSessionHash(body);
-  const groupId = assignGroup();
+  const groupId = assignGroup(body);
 
-  // Store full content + model server-side
-  reqStore.set(reqId, { fullContents, model });
+  // Extract telemetry fields for router eval events
+  const toolsSeg = segments.find((s) => s.type === "tools");
+  // Extract actual human text from user messages, skipping tool_result payloads.
+  // In Claude's API, multi-turn "user" messages often contain tool_result blocks
+  // (returning tool output to the model), not human-authored text.
+  const userMessages = (body.messages || [])
+    .filter((m) => m.role === "user")
+    .map((m) => {
+      if (typeof m.content === "string") return m.content;
+      if (Array.isArray(m.content)) {
+        // Extract only text blocks, ignore tool_result blocks
+        const textParts = m.content
+          .filter((block) => block.type === "text" && block.text)
+          .map((block) => block.text);
+        return textParts.join("\n");
+      }
+      return "";
+    })
+    .filter((text) => text.length > 0) // Drop empty messages (tool_result-only)
+    .map((text) => stripInfrastructureTags(text))
+    .filter((text) => text.length > 0) // Re-filter after stripping
+    .map((text) => text.slice(0, 500))
+    .slice(-3);
+
+  // Store full content + model + telemetry fields server-side
+  reqStore.set(reqId, {
+    fullContents,
+    model,
+    sessionHash,
+    groupId,
+    stream: !!body.stream,
+    toolNames: toolsSeg?.toolNames || [],
+    toolCount: toolsSeg?.count || 0,
+    estimatedToolTokens: toolsSeg?.tokens || 0,
+    userMessages,
+  });
 
   // Evict old requests if over limit
   if (reqStore.size > MAX_STORED_REQS) {
@@ -291,24 +580,45 @@ function analyzeRequest(body) {
 function parseStreamedResponse(data) {
   const lines = data.split("\n");
   let inputTokens = 0;
+  let cacheCreationTokens = 0;
+  let cacheReadTokens = 0;
   let outputTokens = 0;
   let stopReason = null;
+  const toolsUsed = [];
 
   for (const line of lines) {
     if (!line.startsWith("data: ")) continue;
     try {
       const event = JSON.parse(line.slice(6));
       if (event.type === "message_start" && event.message?.usage) {
-        inputTokens = event.message.usage.input_tokens || 0;
+        const u = event.message.usage;
+        inputTokens = u.input_tokens || 0;
+        cacheCreationTokens = u.cache_creation_input_tokens || 0;
+        cacheReadTokens = u.cache_read_input_tokens || 0;
       }
       if (event.type === "message_delta") {
         if (event.usage) outputTokens = event.usage.output_tokens || 0;
         if (event.delta?.stop_reason) stopReason = event.delta.stop_reason;
       }
+      if (event.type === "content_block_start" &&
+          event.content_block?.type === "tool_use" &&
+          event.content_block?.name) {
+        toolsUsed.push(event.content_block.name);
+      }
     } catch (e) { /* skip */ }
   }
 
-  return { inputTokens, outputTokens, stopReason };
+  // Total input = non-cached + cache-created + cache-read
+  const totalInputTokens = inputTokens + cacheCreationTokens + cacheReadTokens;
+
+  return {
+    inputTokens: totalInputTokens,
+    cacheCreationTokens,
+    cacheReadTokens,
+    outputTokens,
+    stopReason,
+    toolsUsed,
+  };
 }
 
 // ─── Accurate token counting via Anthropic API ──────────────────────────────
@@ -483,8 +793,70 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    // ── API: Router config ──
+    if (req.url === "/api/router/config") {
+      const config = router.getRouterConfig();
+      jsonResponse(res, 200, {
+        ...config,
+        premium: isPremium(),
+        available: isPremium(),
+        effective_mode: isPremium() ? config.mode : "off",
+        locked_reason: isPremium() ? null : "requires_pro",
+      });
+      return;
+    }
+
+    // ── API: Router status ──
+    if (req.url === "/api/router/status") {
+      const status = router.getRouterStatus();
+      const metrics = isPremium() ? routerLog.getMetrics() : null;
+      jsonResponse(res, 200, {
+        schema_version: 1,
+        premium: isPremium(),
+        available: isPremium(),
+        effective_mode: isPremium() ? status.mode : "off",
+        locked_reason: isPremium() ? null : "requires_pro",
+        ...status,
+        metrics: metrics ? {
+          window_event_count: metrics.window?.event_count ?? 0,
+          eligible_rate: metrics.summary?.eligible_rate ?? 0,
+          would_have_missed_rate: metrics.summary?.would_have_missed_rate ?? 0,
+          avg_confidence: metrics.summary?.avg_confidence ?? null,
+          median_estimated_tokens_saved: metrics.summary?.median_estimated_tokens_saved ?? 0,
+        } : null,
+      });
+      return;
+    }
+
     res.writeHead(404);
     res.end("Not found");
+    return;
+  }
+
+  // ── API: Set router mode ──
+  if (req.method === "POST" && req.url === "/api/router/mode") {
+    if (!isPremium()) {
+      jsonResponse(res, 403, { error: "Router mode changes require Pro" });
+      return;
+    }
+    readBody(req).then((buf) => {
+      try {
+        const data = JSON.parse(buf.toString());
+        const mode = data.mode;
+        if (!["off", "shadow", "auto"].includes(mode)) {
+          jsonResponse(res, 400, { error: "Invalid mode. Must be off, shadow, or auto." });
+          return;
+        }
+        const state = routerLog.getState();
+        state.config.mode = mode;
+        routerLog.saveState();
+        console.log(`  [router] Mode changed to: ${mode}`);
+        broadcast({ type: "router_mode_changed", mode });
+        jsonResponse(res, 200, { mode });
+      } catch (err) {
+        jsonResponse(res, 400, { error: "Invalid JSON" });
+      }
+    });
     return;
   }
 
@@ -548,12 +920,14 @@ const server = http.createServer((req, res) => {
   // ── Proxy API requests to Anthropic ──
   let bodyChunks = [];
   req.on("data", (chunk) => bodyChunks.push(chunk));
-  req.on("end", () => {
+  req.on("end", async () => {
     const bodyBuffer = Buffer.concat(bodyChunks);
     const bodyStr = bodyBuffer.toString("utf-8");
 
     let forwardBuffer = bodyBuffer; // default: forward original
     let filteringInfo = null;
+    let requestTurn = null; // captured for response correlation
+    let routerResult = { mode: "off" };
 
     // Analyze + filter if it's a messages endpoint
     if (req.url.includes("/messages")) {
@@ -590,10 +964,49 @@ const server = http.createServer((req, res) => {
           analysis.tokensSaved = filteringInfo.tokensSaved;
         }
 
+        requestTurn = analysis.turn;
+
         broadcast({ type: "request", ...analysis });
         console.log(
           `[R${analysis.turn}] ${analysis.model} | ${analysis.segments.length} segs | ~${analysis.totalEstimatedTokens} tokens | $${analysis.estimatedCost.totalCost.toFixed(4)}${filteringInfo ? ` | FILTERED: ${filteringInfo.originalToolCount}→${filteringInfo.filteredToolCount} tools (-${filteringInfo.removedTools.length})` : ""}`
         );
+
+        // Run router prediction (premium only)
+        if (isPremium()) {
+          try {
+            routerResult = await router.routeRequest({
+              stored: reqStore.get(requestTurn),
+              activeProfile,
+              allToolNames: (parsed.tools || []).map((t) => t.name),
+            });
+            if (routerResult.eligible) {
+              console.log(
+                `  [router] ${routerResult.matched_by} | conf=${routerResult.confidence} | selected=${(routerResult.selected_groups || []).join(",")} | stripped=${(routerResult.stripped_groups || []).join(",") || "none"} | ~${routerResult.estimated_tokens_saved} tokens saved`
+              );
+            } else {
+              console.log(`  [router] skip: ${routerResult.skip_reason}`);
+            }
+          } catch (err) {
+            console.error("  [router] prediction error:", err.message);
+          }
+
+          // Broadcast router decision to frontend
+          if ("eligible" in routerResult) {
+            broadcast({
+              type: "router_decision",
+              turn: analysis.turn,
+              mode: routerResult.mode,
+              eligible: routerResult.eligible,
+              skip_reason: routerResult.skip_reason ?? null,
+              matched_by: routerResult.matched_by ?? null,
+              confidence: routerResult.confidence ?? null,
+              selected_groups: routerResult.selected_groups ?? null,
+              stripped_groups: routerResult.stripped_groups ?? [],
+              estimated_tokens_saved: routerResult.estimated_tokens_saved ?? 0,
+              sticky_reused: routerResult.sticky_reused ?? false,
+            });
+          }
+        }
 
         // Fire count_tokens in parallel for accurate count (non-blocking)
         const apiKey = req.headers["x-api-key"];
@@ -628,7 +1041,10 @@ const server = http.createServer((req, res) => {
     // Forward to Anthropic
     const fwdHeaders = {};
     for (const [key, value] of Object.entries(req.headers)) {
-      if (key === "host" || key === "connection") continue;
+      // Strip host/connection (standard proxy), and accept-encoding so the
+      // response arrives uncompressed — the proxy needs to parse SSE/JSON for
+      // telemetry, and compressed chunks produce binary garbage in toString().
+      if (key === "host" || key === "connection" || key === "accept-encoding") continue;
       fwdHeaders[key] = value;
     }
     fwdHeaders["host"] = ANTHROPIC_HOST;
@@ -658,35 +1074,79 @@ const server = http.createServer((req, res) => {
           res.end();
 
           if (req.url.includes("/messages")) {
-            const { inputTokens, outputTokens, stopReason } = parseStreamedResponse(responseData);
+            const parsed = parseStreamedResponse(responseData);
+            let { inputTokens: actualInput, outputTokens: actualOutput, cacheCreationTokens, cacheReadTokens, stopReason, toolsUsed } = parsed;
 
-            let actualInput = inputTokens;
-            let actualOutput = outputTokens;
             if (!actualInput) {
               try {
                 const jsonRes = JSON.parse(responseData);
-                actualInput = jsonRes.usage?.input_tokens || 0;
-                actualOutput = jsonRes.usage?.output_tokens || 0;
+                const u = jsonRes.usage || {};
+                const nonCached = u.input_tokens || 0;
+                cacheCreationTokens = u.cache_creation_input_tokens || 0;
+                cacheReadTokens = u.cache_read_input_tokens || 0;
+                actualInput = nonCached + cacheCreationTokens + cacheReadTokens;
+                actualOutput = u.output_tokens || 0;
+                // Extract tool-use names from non-streaming response
+                if (Array.isArray(jsonRes.content)) {
+                  for (const block of jsonRes.content) {
+                    if (block.type === "tool_use" && block.name) {
+                      toolsUsed.push(block.name);
+                    }
+                  }
+                }
               } catch (e) { /* streaming response, already parsed above */ }
             }
 
-            if (actualInput || actualOutput) {
-              // Find model for this request from reqStore
-              const latestReqId = reqCounter - 1;
-              const stored = reqStore.get(latestReqId);
-              const model = stored?.model || "unknown";
-              const cost = calculateCost(actualInput, actualOutput, model);
+            // Correlate response to originating request
+            const reqId = requestTurn ?? reqCounter - 1;
+            const stored = reqStore.get(reqId);
+            if (stored) stored.toolsUsed = toolsUsed;
+            const model = stored?.model || "unknown";
+            const cost = (actualInput || actualOutput)
+              ? calculateCost(actualInput, actualOutput, model, cacheCreationTokens, cacheReadTokens)
+              : null;
 
+            if (actualInput || actualOutput) {
               broadcast({
                 type: "response_complete",
-                usage: { input_tokens: actualInput, output_tokens: actualOutput },
+                turn: reqId,
+                usage: {
+                  input_tokens: actualInput,
+                  output_tokens: actualOutput,
+                  cache_creation_input_tokens: cacheCreationTokens || 0,
+                  cache_read_input_tokens: cacheReadTokens || 0,
+                },
                 cost,
                 stopReason,
+                toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
                 timestamp: Date.now(),
               });
+              const cacheInfo = (cacheCreationTokens || cacheReadTokens)
+                ? ` (cache: ${cacheReadTokens} read, ${cacheCreationTokens} created)`
+                : "";
+              const toolsInfo = toolsUsed.length > 0 ? ` | tools: ${toolsUsed.join(", ")}` : "";
               console.log(
-                `  → Response: ${actualInput} in / ${actualOutput} out [${stopReason}] | $${cost.totalCost.toFixed(4)}`
+                `  → [R${reqId}] Response: ${actualInput} in / ${actualOutput} out [${stopReason}] | $${cost.totalCost.toFixed(4)}${cacheInfo}${toolsInfo}`
               );
+            }
+
+            // Update per-session stop reason for turn-boundary detection
+            if (stored?.sessionHash && conversationGroups.has(stored.sessionHash)) {
+              conversationGroups.get(stored.sessionHash).lastStopReason = stopReason;
+            }
+
+            // Emit router eval event (premium only — grouping/stopReason stays free)
+            if (isPremium()) {
+              try {
+                const evalEvent = routerLog.buildEvalEvent(
+                  { reqId, stored, activeProfile, profiles },
+                  routerResult,
+                  { stopReason, actualInput, actualOutput, cost, toolsUsed }
+                );
+                routerLog.emitEvalEvent(evalEvent);
+              } catch (err) {
+                console.error("  → [router] eval event error:", err.message);
+              }
             }
           }
         });
@@ -716,6 +1176,8 @@ wss.on("connection", (ws) => {
     requests: reqCounter,
     profiles,
     activeProfile,
+    premium: isPremium(),
+    routerMode: isPremium() ? routerLog.getConfig().mode : "off",
   }));
 
   // Handle incoming messages from client
@@ -756,6 +1218,15 @@ server.listen(PORT, () => {
   console.log("");
   console.log("  To use with Claude Code:");
   console.log(`  ANTHROPIC_BASE_URL=http://localhost:${PORT} claude`);
+  console.log("");
+
+  // Initialize router (premium only — embeddings load is fire-and-forget)
+  if (isPremium()) {
+    router.initRouter();
+  } else {
+    console.log("  [router] Premium disabled — router intelligence inactive");
+  }
+
   console.log("");
   console.log("  Waiting for requests...");
   console.log("");
