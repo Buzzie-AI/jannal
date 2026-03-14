@@ -158,15 +158,21 @@ const router = require("./router/index");
 
 let groupCounter = 0;
 let lastRequestTime = 0;
-let lastActiveGroupId = null;  // for subagent assignment
+let lastMainSessionKey = null; // sessionHash of most recently active main session
 const GAP_THRESHOLD = 45000;   // 45 seconds
 const NEW_MAIN_MSG_THRESHOLD = 20; // messages above this = likely main session, not subagent
 const MAX_TRACKED_CONVERSATIONS = 10;
 
-// Track multiple concurrent conversations by their firstText identity.
-// Each conversation gets its own persistent group, solving the interleaving
-// problem where 3+ concurrent sessions created singleton groups.
-const conversationGroups = new Map(); // firstText → { groupId, lastHumanText, lastSeen }
+// Track concurrent conversations by sessionHash (stable after billing header fix).
+// Each session gets its own persistent group. Subagents (different sessionHash,
+// low msgCount) attach to their parent via lastMainSessionKey — only main-session
+// requests update this value, so subagents never misdirect each other.
+//
+// Known limitation: under true concurrent main-session activity, a subagent can
+// attach to the wrong parent group (the most recently active main session, not
+// necessarily the one that spawned it). Without parent-child tracking in the
+// Anthropic API, this is the best available heuristic.
+const conversationGroups = new Map(); // sessionHash → { groupId, lastHumanText, lastSeen }
 
 function simpleHash(str) {
   let hash = 5381;
@@ -200,6 +206,8 @@ function getSessionHash(body) {
     return "no-system";
   }
   if (!text) return "no-system";
+  // Strip the per-request billing header checksum (cch= changes every request)
+  text = text.replace(/^x-anthropic-billing-header:[^\n]*\n?/, "");
   const model = body.model || "unknown";
   return simpleHash(model + "|" + text.slice(0, 5000));
 }
@@ -278,54 +286,50 @@ function extractFirstHumanText(body) {
 /**
  * Assign a group (turn) ID to a request.
  *
- * Tracks multiple concurrent conversations by firstText (the first human
- * message in the conversation, which is stable within a session). Each
- * conversation gets its own persistent group in the conversationGroups map.
+ * Tracks concurrent conversations by sessionHash (model + system prompt text,
+ * billing header stripped). Each session gets its own persistent group.
  *
- * This solves the interleaving problem: when 3+ Claude Code sessions run
- * concurrently, each session's requests are grouped together instead of
- * creating a new group every time a different session's request arrives.
+ * Subagents (different sessionHash, low msg count) attach to their parent
+ * conversation via lastMainSessionKey — only main-session requests (high msg
+ * count) update this value, preventing subagents from misdirecting each other.
  *
  * New group triggers:
  * - Time gap > 45s (clears all tracked conversations)
- * - User types a new message within a tracked conversation
- * - First request from a previously unseen conversation (high msg count)
- *
- * Subagents (low msg count, unknown firstText) attach to the most recently
- * active group.
+ * - User types a new message within a tracked session
+ * - First request from a previously unseen session (high msg count)
  */
 function assignGroup(body) {
   const now = Date.now();
   const msgCount = (body.messages || []).length;
   const model = body.model || "unknown";
   const gap = now - lastRequestTime;
-  const currentFirstText = extractFirstHumanText(body);
+  const sessionHash = getSessionHash(body);
   const currentLastText = extractLastHumanText(body);
 
   lastRequestTime = now;
 
   // Time gap: clear all tracked conversations, start fresh
-  if (lastActiveGroupId === null || gap > GAP_THRESHOLD) {
+  if (gap > GAP_THRESHOLD || conversationGroups.size === 0) {
     conversationGroups.clear();
     const groupId = groupCounter++;
-    lastActiveGroupId = groupId;
-    if (currentFirstText) {
-      conversationGroups.set(currentFirstText, {
-        groupId,
-        lastHumanText: currentLastText,
-        lastSeen: now,
-      });
+    conversationGroups.set(sessionHash, {
+      groupId,
+      lastHumanText: currentLastText,
+      lastSeen: now,
+    });
+    if (msgCount > NEW_MAIN_MSG_THRESHOLD) {
+      lastMainSessionKey = sessionHash;
     }
-    console.log(`  [group] NEW group=${groupId} reason=gap(${gap}ms) model=${model} msgs=${msgCount} firstText="${(currentFirstText || "").slice(0, 40)}"`);
+    console.log(`  [group] NEW group=${groupId} reason=gap(${gap}ms) model=${model} msgs=${msgCount}`);
     return groupId;
   }
 
-  // Look up known conversation by firstText
-  if (currentFirstText && conversationGroups.has(currentFirstText)) {
-    const conv = conversationGroups.get(currentFirstText);
+  // Known session: look up by sessionHash
+  if (conversationGroups.has(sessionHash)) {
+    const conv = conversationGroups.get(sessionHash);
     conv.lastSeen = now;
 
-    // Check if user typed a new message in this conversation
+    // Check if user typed a new message in this session
     const lastTextChanged = currentLastText !== null
       && conv.lastHumanText !== null
       && currentLastText !== conv.lastHumanText;
@@ -334,30 +338,32 @@ function assignGroup(body) {
       conv.lastHumanText = currentLastText;
       const groupId = groupCounter++;
       conv.groupId = groupId;
-      lastActiveGroupId = groupId;
-      console.log(`  [group] NEW group=${groupId} reason=new_user_msg model=${model} msgs=${msgCount} lastText="${(currentLastText || "").slice(0, 40)}"`);
+      if (msgCount > NEW_MAIN_MSG_THRESHOLD) {
+        lastMainSessionKey = sessionHash;
+      }
+      console.log(`  [group] NEW group=${groupId} reason=new_user_msg model=${model} msgs=${msgCount}`);
       return groupId;
     }
 
-    // Same conversation, same last message → same group
     if (currentLastText !== null) conv.lastHumanText = currentLastText;
-    lastActiveGroupId = conv.groupId;
+    if (msgCount > NEW_MAIN_MSG_THRESHOLD) {
+      lastMainSessionKey = sessionHash;
+    }
     console.log(`  [group] SAME group=${conv.groupId} reason=same_conv model=${model} msgs=${msgCount}`);
     return conv.groupId;
   }
 
-  // New conversation (firstText not in map)
-  if (currentFirstText && msgCount > NEW_MAIN_MSG_THRESHOLD) {
-    // High message count = genuine main session → new group, track it
+  // New sessionHash, high msg count → new main conversation
+  if (msgCount > NEW_MAIN_MSG_THRESHOLD) {
     const groupId = groupCounter++;
-    conversationGroups.set(currentFirstText, {
+    conversationGroups.set(sessionHash, {
       groupId,
       lastHumanText: currentLastText,
       lastSeen: now,
     });
-    lastActiveGroupId = groupId;
+    lastMainSessionKey = sessionHash;
 
-    // Evict oldest if map is too large
+    // Evict oldest if map too large
     if (conversationGroups.size > MAX_TRACKED_CONVERSATIONS) {
       let oldestKey = null, oldestTime = Infinity;
       for (const [key, val] of conversationGroups) {
@@ -366,13 +372,22 @@ function assignGroup(body) {
       if (oldestKey) conversationGroups.delete(oldestKey);
     }
 
-    console.log(`  [group] NEW group=${groupId} reason=new_conv(msgs=${msgCount}) model=${model} firstText="${currentFirstText.slice(0, 40)}"`);
+    console.log(`  [group] NEW group=${groupId} reason=new_conv model=${model} msgs=${msgCount}`);
     return groupId;
   }
 
-  // Low message count or no firstText = subagent → assign to most recent group
-  console.log(`  [group] SAME group=${lastActiveGroupId} reason=subagent(msgs=${msgCount}) model=${model}`);
-  return lastActiveGroupId;
+  // Subagent: attach to the most recently active MAIN session's group
+  if (lastMainSessionKey && conversationGroups.has(lastMainSessionKey)) {
+    const parentGroup = conversationGroups.get(lastMainSessionKey).groupId;
+    console.log(`  [group] SAME group=${parentGroup} reason=subagent(msgs=${msgCount}) model=${model}`);
+    return parentGroup;
+  }
+
+  // Fallback: no tracked main session yet
+  const latest = [...conversationGroups.values()].sort((a, b) => b.lastSeen - a.lastSeen)[0];
+  const fallbackGroup = latest ? latest.groupId : groupCounter++;
+  console.log(`  [group] SAME group=${fallbackGroup} reason=subagent_fallback(msgs=${msgCount}) model=${model}`);
+  return fallbackGroup;
 }
 
 // ─── Request analysis ────────────────────────────────────────────────────────
