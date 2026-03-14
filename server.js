@@ -293,6 +293,7 @@ function parseStreamedResponse(data) {
   let inputTokens = 0;
   let outputTokens = 0;
   let stopReason = null;
+  const toolsUsed = [];
 
   for (const line of lines) {
     if (!line.startsWith("data: ")) continue;
@@ -305,10 +306,15 @@ function parseStreamedResponse(data) {
         if (event.usage) outputTokens = event.usage.output_tokens || 0;
         if (event.delta?.stop_reason) stopReason = event.delta.stop_reason;
       }
+      if (event.type === "content_block_start" &&
+          event.content_block?.type === "tool_use" &&
+          event.content_block?.name) {
+        toolsUsed.push(event.content_block.name);
+      }
     } catch (e) { /* skip */ }
   }
 
-  return { inputTokens, outputTokens, stopReason };
+  return { inputTokens, outputTokens, stopReason, toolsUsed };
 }
 
 // ─── Accurate token counting via Anthropic API ──────────────────────────────
@@ -554,6 +560,7 @@ const server = http.createServer((req, res) => {
 
     let forwardBuffer = bodyBuffer; // default: forward original
     let filteringInfo = null;
+    let requestTurn = null; // captured for response correlation
 
     // Analyze + filter if it's a messages endpoint
     if (req.url.includes("/messages")) {
@@ -589,6 +596,8 @@ const server = http.createServer((req, res) => {
           analysis.removedTools = filteringInfo.removedTools;
           analysis.tokensSaved = filteringInfo.tokensSaved;
         }
+
+        requestTurn = analysis.turn;
 
         broadcast({ type: "request", ...analysis });
         console.log(
@@ -658,7 +667,7 @@ const server = http.createServer((req, res) => {
           res.end();
 
           if (req.url.includes("/messages")) {
-            const { inputTokens, outputTokens, stopReason } = parseStreamedResponse(responseData);
+            const { inputTokens, outputTokens, stopReason, toolsUsed } = parseStreamedResponse(responseData);
 
             let actualInput = inputTokens;
             let actualOutput = outputTokens;
@@ -667,25 +676,37 @@ const server = http.createServer((req, res) => {
                 const jsonRes = JSON.parse(responseData);
                 actualInput = jsonRes.usage?.input_tokens || 0;
                 actualOutput = jsonRes.usage?.output_tokens || 0;
+                // Extract tool-use names from non-streaming response
+                if (Array.isArray(jsonRes.content)) {
+                  for (const block of jsonRes.content) {
+                    if (block.type === "tool_use" && block.name) {
+                      toolsUsed.push(block.name);
+                    }
+                  }
+                }
               } catch (e) { /* streaming response, already parsed above */ }
             }
 
             if (actualInput || actualOutput) {
-              // Find model for this request from reqStore
-              const latestReqId = reqCounter - 1;
-              const stored = reqStore.get(latestReqId);
+              // Use captured requestTurn for correct request correlation
+              const reqId = requestTurn ?? reqCounter - 1;
+              const stored = reqStore.get(reqId);
+              if (stored) stored.toolsUsed = toolsUsed;
               const model = stored?.model || "unknown";
               const cost = calculateCost(actualInput, actualOutput, model);
 
               broadcast({
                 type: "response_complete",
+                turn: reqId,
                 usage: { input_tokens: actualInput, output_tokens: actualOutput },
                 cost,
                 stopReason,
+                toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
                 timestamp: Date.now(),
               });
+              const toolsInfo = toolsUsed.length > 0 ? ` | tools: ${toolsUsed.join(", ")}` : "";
               console.log(
-                `  → Response: ${actualInput} in / ${actualOutput} out [${stopReason}] | $${cost.totalCost.toFixed(4)}`
+                `  → [R${reqId}] Response: ${actualInput} in / ${actualOutput} out [${stopReason}] | $${cost.totalCost.toFixed(4)}${toolsInfo}`
               );
             }
           }

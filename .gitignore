@@ -5,3 +5,4 @@ profiles.json
 dist/
 out/
 .env
+data/

@@ -229,6 +229,10 @@ function renderReqCard(i) {
     html += `<div class="req-actual">Actual: ${t.actualUsage.input_tokens.toLocaleString()} in / ${t.actualUsage.output_tokens.toLocaleString()} out</div>`
   }
 
+  if (t.toolsUsed && t.toolsUsed.length > 0) {
+    html += `<div style="margin-top:2px;font-size:9px;color:var(--cyan)">&#x2192; ${t.toolsUsed.length} tool${t.toolsUsed.length > 1 ? 's' : ''} used</div>`
+  }
+
   if (t.actualCost) {
     html += `<div class="req-cost" style="color:var(--amber)">${fmtCost(t.actualCost.totalCost)}</div>`
   } else if (t.estimatedCost) {
@@ -397,6 +401,16 @@ export function renderDetail() {
     html += `<div class="usage-row"><span class="usage-label">Input tokens ${isExact ? '(exact)' : '(est.)'}</span><span class="usage-value" style="color:${isExact ? 'var(--green)' : 'var(--text2)'}">${isExact ? '' : '~'}${req.totalEstimatedTokens.toLocaleString()}</span></div>`
     html += `<div class="usage-row"><span class="usage-label">Input cost ${isExact ? '' : '(est.)'}</span><span class="usage-value" style="color:${isExact ? 'var(--amber)' : 'var(--text3)'}">${isExact ? '' : '~'}${fmtCost(req.estimatedCost.totalCost)}</span></div>`
     if (isExact) html += `<div style="margin-top:4px;font-size:9px;color:var(--text3)">via count_tokens API</div>`
+    html += `</div>`
+  }
+
+  // Tool-use summary
+  if (req.toolsUsed && req.toolsUsed.length > 0) {
+    html += `<div class="usage-box">`
+    html += `<div style="font-size:10px;font-weight:700;color:var(--cyan);margin-bottom:4px">Tools Used (${req.toolsUsed.length})</div>`
+    for (const name of req.toolsUsed) {
+      html += `<div style="font-size:10px;color:var(--text2);padding:1px 0">${escapeHtml(name)}</div>`
+    }
     html += `</div>`
   }
 
