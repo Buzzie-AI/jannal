@@ -295,8 +295,12 @@ function extractFirstHumanText(body) {
  *
  * New group triggers:
  * - Time gap > 45s (clears all tracked conversations)
- * - User types a new message within a tracked session
+ * - User types a new message after an end_turn response
  * - First request from a previously unseen session (high msg count)
+ *
+ * Response-aware turn boundaries: after tool_use, a changed lastHumanText
+ * is a continuation (tool results appended), not a new user turn. Only
+ * after end_turn does changed text mean the user typed something new.
  */
 function assignGroup(body) {
   const now = Date.now();
@@ -316,6 +320,7 @@ function assignGroup(body) {
       groupId,
       lastHumanText: currentLastText,
       lastSeen: now,
+      lastStopReason: null, // no previous response yet
     });
     if (msgCount > NEW_MAIN_MSG_THRESHOLD) {
       lastMainSessionKey = sessionHash;
@@ -336,12 +341,34 @@ function assignGroup(body) {
 
     if (lastTextChanged) {
       conv.lastHumanText = currentLastText;
+
+      if (conv.lastStopReason === "end_turn") {
+        // Previous response finished (end_turn) and text changed → genuine new user message
+        const groupId = groupCounter++;
+        conv.groupId = groupId;
+        if (msgCount > NEW_MAIN_MSG_THRESHOLD) {
+          lastMainSessionKey = sessionHash;
+        }
+        console.log(`  [group] NEW group=${groupId} reason=new_user_msg model=${model} msgs=${msgCount} prevStop=end_turn`);
+        return groupId;
+      }
+
+      if (conv.lastStopReason === "tool_use") {
+        // Previous response used tools → text changed because tool results were appended, not new user input
+        if (msgCount > NEW_MAIN_MSG_THRESHOLD) {
+          lastMainSessionKey = sessionHash;
+        }
+        console.log(`  [group] SAME group=${conv.groupId} reason=continuation_after_tool_use model=${model} msgs=${msgCount}`);
+        return conv.groupId;
+      }
+
+      // Unknown or null stop reason (first request, or response not yet received) → conservative: new group
       const groupId = groupCounter++;
       conv.groupId = groupId;
       if (msgCount > NEW_MAIN_MSG_THRESHOLD) {
         lastMainSessionKey = sessionHash;
       }
-      console.log(`  [group] NEW group=${groupId} reason=new_user_msg model=${model} msgs=${msgCount}`);
+      console.log(`  [group] NEW group=${groupId} reason=new_user_msg model=${model} msgs=${msgCount} prevStop=${conv.lastStopReason || "none"}`);
       return groupId;
     }
 
@@ -360,6 +387,7 @@ function assignGroup(body) {
       groupId,
       lastHumanText: currentLastText,
       lastSeen: now,
+      lastStopReason: null,
     });
     lastMainSessionKey = sessionHash;
 
@@ -1078,6 +1106,11 @@ const server = http.createServer((req, res) => {
               console.log(
                 `  → [R${reqId}] Response: ${actualInput} in / ${actualOutput} out [${stopReason}] | $${cost.totalCost.toFixed(4)}${cacheInfo}${toolsInfo}`
               );
+            }
+
+            // Update per-session stop reason for turn-boundary detection
+            if (stored?.sessionHash && conversationGroups.has(stored.sessionHash)) {
+              conversationGroups.get(stored.sessionHash).lastStopReason = stopReason;
             }
 
             // Emit router eval event for ALL /messages responses
