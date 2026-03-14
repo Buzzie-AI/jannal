@@ -1,7 +1,8 @@
 import { state, MAX_REQS } from './state.js'
 import { renderAll, renderStatus, renderDetail } from './render.js'
 import { renderProfileSelector } from './profiles.js'
-import { persistSession, addDailyCost } from './session.js'
+import { persistSession, addDailyCost, addDailySavings } from './session.js'
+import { inputRate } from './utils.js'
 
 // ─── Group helpers ──────────────────────────────────────────────────────────
 
@@ -159,6 +160,9 @@ export function connect() {
     if (data.type === 'router_decision') {
       const req = state.reqs.find(r => r.turn === data.turn)
       if (req) {
+        // Only record daily savings once per turn (prevent double-counting
+        // on reconnect or repeated events)
+        const isFirstRouterData = !req.router
         req.router = {
           mode: data.mode,
           eligible: data.eligible,
@@ -169,6 +173,12 @@ export function connect() {
           stripped_groups: data.stripped_groups,
           estimated_tokens_saved: data.estimated_tokens_saved,
           sticky_reused: data.sticky_reused,
+        }
+        // Persist daily savings (once per turn, estimated $ using cache-read rate)
+        if (isFirstRouterData && data.estimated_tokens_saved > 0) {
+          const rate = inputRate(req.model)
+          const savedCost = (data.estimated_tokens_saved / 1_000_000) * rate * 0.10
+          addDailySavings(savedCost, data.estimated_tokens_saved)
         }
         if (state.selectedReq !== null && state.reqs[state.selectedReq]?.turn === data.turn) {
           renderDetail()

@@ -1,6 +1,6 @@
 import { state } from './state.js'
 import { getSegColor, getSegLabel, fmt, fmtCost, inputRate, escapeHtml } from './utils.js'
-import { getDailyCost } from './session.js'
+import { getDailyCost, getDailySavings } from './session.js'
 
 // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -31,46 +31,24 @@ export function renderStatus() {
   const reqBadge = document.getElementById('reqBadge')
   if (reqBadge) reqBadge.textContent = `Req ${state.reqs.length}`
 
-  // Session cost + savings
-  let totalCost = 0
-  let totalSavedTokens = 0
-  let totalSavedCost = 0
-  for (const t of state.reqs) {
-    if (t.actualCost) totalCost += t.actualCost.totalCost
-    else if (t.estimatedCost) totalCost += t.estimatedCost.totalCost
-    const saved = t.router?.estimated_tokens_saved || 0
-    if (saved > 0) {
-      totalSavedTokens += saved
-      // Saved tokens are tool definitions that would have been input tokens.
-      // With prompt caching they'd mostly be cache reads (10% of base rate).
-      const rate = inputRate(t.model)
-      totalSavedCost += (saved / 1_000_000) * rate * 0.10
-    }
-  }
-  document.getElementById('sessionCost').textContent = fmtCost(totalCost)
-  const savedEl = document.getElementById('sessionSaved')
+  // Daily metrics (persisted across eviction/reload/reconnect)
+  const dailyCost = getDailyCost()
+  const costEl = document.getElementById('dailyCost')
+  if (costEl) costEl.textContent = `Cost: ${fmtCost(dailyCost)}`
+
+  const savedEl = document.getElementById('dailySaved')
   if (savedEl) {
     if (!state.premium) {
-      savedEl.textContent = 'Pro'
-      savedEl.className = 'session-saved premium-locked'
+      savedEl.textContent = 'Saved: Pro'
+      savedEl.className = 'daily-saved premium-locked'
       savedEl.title = 'Savings intelligence requires Pro'
     } else {
-      const costStr = totalSavedCost >= 0.01 ? ` (${fmtCost(totalSavedCost)})` : ''
-      savedEl.textContent = `Saved ~${fmt(totalSavedTokens)}${costStr}`
-      savedEl.className = 'session-saved'
-      savedEl.classList.toggle('has-savings', totalSavedTokens > 0)
-    }
-  }
-
-  // Daily cost (persisted across eviction)
-  const daily = getDailyCost()
-  const dailyEl = document.getElementById('dailyCost')
-  if (dailyEl) {
-    if (daily > 0) {
-      dailyEl.style.display = 'flex'
-      dailyEl.textContent = `Today: ${fmtCost(daily)}`
-    } else {
-      dailyEl.style.display = 'none'
+      const { cost: savedCost, tokens: savedTokens } = getDailySavings()
+      const tokenStr = savedTokens > 0 ? ` (${fmt(savedTokens)})` : ''
+      savedEl.textContent = `Saved: ${fmtCost(savedCost)}${tokenStr}`
+      savedEl.className = 'daily-saved'
+      savedEl.classList.toggle('has-savings', savedCost > 0)
+      savedEl.title = 'Estimated daily savings from router intelligence'
     }
   }
 
