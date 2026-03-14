@@ -1,7 +1,7 @@
 import { state, MAX_REQS } from './state.js'
 import { renderAll, renderStatus } from './render.js'
 import { renderProfileSelector } from './profiles.js'
-import { persistSession } from './session.js'
+import { persistSession, addDailyCost } from './session.js'
 
 // ─── Group helpers ──────────────────────────────────────────────────────────
 
@@ -91,6 +91,9 @@ export function connect() {
     }
 
     if (data.type === 'request') {
+      if (data.toolsUsed && data.toolsUsed.length) {
+        data.toolsUsed.forEach(name => state.toolsUsed.add(name))
+      }
       state.reqs.push(data)
       // Evict oldest requests to keep memory bounded
       if (state.reqs.length > MAX_REQS) {
@@ -123,7 +126,10 @@ export function connect() {
       if (latest) {
         latest.actualUsage = data.usage
         latest.stopReason = data.stopReason
-        if (data.cost) latest.actualCost = data.cost
+        if (data.cost) {
+          latest.actualCost = data.cost
+          addDailyCost(data.cost.totalCost)
+        }
         renderAll()
         persistSession(state)
       }

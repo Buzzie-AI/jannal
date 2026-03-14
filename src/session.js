@@ -1,6 +1,7 @@
 // ─── Session export & persistence ───────────────────────────────────────────
 
 const STORAGE_KEY = 'jannal_session'
+const DAILY_COSTS_KEY = 'jannal_daily_costs'
 const DEBOUNCE_MS = 500
 
 let persistTimeout = null
@@ -37,6 +38,13 @@ export function restoreSession(state) {
         ? selectedReq
         : state.reqs.length - 1
       if (data.groupView != null) state.groupView = data.groupView
+      // Rebuild toolsUsed from restored reqs
+      if (state.toolsUsed) {
+        state.toolsUsed.clear()
+        for (const t of state.reqs) {
+          if (t.toolsUsed?.length) t.toolsUsed.forEach(name => state.toolsUsed.add(name))
+        }
+      }
       return true
     }
   } catch (e) {
@@ -81,6 +89,24 @@ export function exportSessionCSV(state) {
   ])
   const csv = [headers.join(','), ...rows.map(r => r.map((v, i) => i === 5 ? v : `"${String(v)}"`).join(','))].join('\n')
   return csv
+}
+
+export function addDailyCost(cost) {
+  if (!cost || cost <= 0) return
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    const data = JSON.parse(localStorage.getItem(DAILY_COSTS_KEY) || '{}')
+    data[today] = (data[today] || 0) + cost
+    localStorage.setItem(DAILY_COSTS_KEY, JSON.stringify(data))
+  } catch (e) { /* ignore */ }
+}
+
+export function getDailyCost() {
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    const data = JSON.parse(localStorage.getItem(DAILY_COSTS_KEY) || '{}')
+    return data[today] || 0
+  } catch (e) { return 0 }
 }
 
 export function downloadExport(content, filename) {

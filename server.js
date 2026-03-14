@@ -240,11 +240,21 @@ function analyzeRequest(body) {
     fullContents.push(JSON.stringify(body.tools, null, 2));
   }
 
-  // Messages
+  // Messages + extract tools used
+  const toolsUsed = new Set();
   if (body.messages) {
     for (let i = 0; i < body.messages.length; i++) {
       const msg = body.messages[i];
       const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+
+      // Extract tool_use names for "never used" and "quick profile" features
+      if (Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block && block.type === "tool_use" && block.name) {
+            toolsUsed.add(block.name);
+          }
+        }
+      }
 
       const isToolResult =
         Array.isArray(msg.content) && msg.content.some((c) => c.type === "tool_result");
@@ -305,6 +315,7 @@ function analyzeRequest(body) {
     estimatedCost,
     timestamp: Date.now(),
     messageCount: (body.messages || []).length,
+    toolsUsed: [...toolsUsed],
     groupId,
     sessionHash,
   };
