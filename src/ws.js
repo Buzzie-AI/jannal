@@ -89,7 +89,7 @@ export function connect() {
       if (data.activeProfile) state.activeProfile = data.activeProfile
       if (data.routerMode != null) state.routerMode = data.routerMode
       renderProfileSelector()
-      renderStatus()
+      renderAll() // full re-render — premium state affects header, detail, and savings
       return
     }
 
