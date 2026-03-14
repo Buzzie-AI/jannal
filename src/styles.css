@@ -279,16 +279,28 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-s
 .modal-tools-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 8px 12px; border-radius: 8px; background: rgba(255,255,255,0.02); }
 .modal-tools-header-left { font-size: 11px; color: var(--text2); }
 .modal-tools-header-left strong { color: var(--text); }
-.tool-group { margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; overflow: hidden; }
-.tool-group-header {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 8px 12px; background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.04);
+.tool-section-header {
+  font-size: 10px; font-weight: 800; color: var(--text3); text-transform: uppercase;
+  letter-spacing: 0.06em; padding: 12px 4px 6px; margin-top: 4px;
 }
-.tool-group-title { display: flex; flex-direction: column; gap: 2px; }
+.tool-group { margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; overflow: hidden; }
+.tool-group-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; background: rgba(255,255,255,0.03); cursor: pointer;
+}
+.tool-group-header:hover { background: rgba(255,255,255,0.05); }
+.tool-group-checkbox { accent-color: var(--blue); cursor: pointer; flex-shrink: 0; width: 15px; height: 15px; }
+.tool-group-chevron {
+  font-size: 9px; color: var(--text3); transition: transform 0.2s;
+  flex-shrink: 0; user-select: none;
+}
+.tool-group-chevron.expanded { transform: rotate(90deg); }
+.tool-group-title { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .tool-group-name { font-size: 12px; font-weight: 700; color: var(--purple); }
 .tool-group-meta { font-size: 10px; color: var(--text3); }
-.tool-group-actions { display: flex; gap: 4px; }
+.tool-group-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .tool-group-body { padding: 8px; }
+.tool-group-body.collapsed { display: none; }
 .tool-card {
   display: flex; align-items: center; gap: 10px; padding: 8px 12px;
   border-radius: 6px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04);
