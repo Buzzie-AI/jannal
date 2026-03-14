@@ -4,3 +4,4 @@ profiles.json
 *.log
 dist/
 out/
+.env
