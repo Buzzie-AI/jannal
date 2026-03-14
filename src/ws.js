@@ -3,6 +3,55 @@ import { renderAll, renderStatus } from './render.js'
 import { renderProfileSelector } from './profiles.js'
 import { persistSession } from './session.js'
 
+// ─── Group helpers ──────────────────────────────────────────────────────────
+
+function addReqToGroup(reqIndex, data) {
+  const gid = data.groupId
+  if (gid == null) return
+
+  if (!state.groups[gid]) {
+    state.groups[gid] = {
+      id: gid,
+      reqIndices: [],
+      sessions: {},
+      startTime: data.timestamp,
+      endTime: data.timestamp,
+    }
+    // Collapse previous groups, expand the new one
+    for (const k of Object.keys(state.expandedGroups)) {
+      state.expandedGroups[k] = false
+    }
+    state.expandedGroups[gid] = true
+  }
+
+  const group = state.groups[gid]
+  group.reqIndices.push(reqIndex)
+  group.endTime = Math.max(group.endTime, data.timestamp)
+
+  // Track sessions within the group
+  const sh = data.sessionHash || 'unknown'
+  if (!group.sessions[sh]) {
+    group.sessions[sh] = { reqIndices: [], model: data.model }
+  }
+  group.sessions[sh].reqIndices.push(reqIndex)
+}
+
+export function rebuildGroups() {
+  state.groups = {}
+  state.expandedGroups = {}
+  for (let i = 0; i < state.reqs.length; i++) {
+    addReqToGroup(i, state.reqs[i])
+  }
+  // Only expand the most recent group
+  const gids = Object.keys(state.groups).map(Number)
+  if (gids.length > 0) {
+    const maxGid = Math.max(...gids)
+    for (const gid of gids) {
+      state.expandedGroups[gid] = gid === maxGid
+    }
+  }
+}
+
 // ─── WebSocket ──────────────────────────────────────────────────────────────
 
 let ws
@@ -46,6 +95,10 @@ export function connect() {
       // Evict oldest requests to keep memory bounded
       if (state.reqs.length > MAX_REQS) {
         state.reqs.splice(0, state.reqs.length - MAX_REQS)
+        // Rebuild groups after eviction
+        rebuildGroups()
+      } else {
+        addReqToGroup(state.reqs.length - 1, data)
       }
       state.selectedReq = state.reqs.length - 1
       renderAll()

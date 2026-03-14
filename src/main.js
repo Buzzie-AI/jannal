@@ -1,6 +1,6 @@
 import './styles.css'
 import { state } from './state.js'
-import { connect } from './ws.js'
+import { connect, rebuildGroups } from './ws.js'
 import { renderAll, renderContextBar, renderReqList, renderDetail } from './render.js'
 import { openModal, closeModal, setModalView, toggleAllTools, toggleGroupTools, onToolToggle, saveCurrentAsProfile, filterModalContent, copyModalContent } from './modal.js'
 import { onProfileChange } from './profiles.js'
@@ -19,8 +19,21 @@ function selectReq(i) {
 function clearReqs() {
   state.reqs = []
   state.selectedReq = null
+  state.groups = {}
+  state.expandedGroups = {}
   renderAll()
   persistSession(state)
+}
+
+function toggleViewMode() {
+  state.groupView = !state.groupView
+  renderReqList()
+  persistSession(state)
+}
+
+function toggleGroup(gid) {
+  state.expandedGroups[gid] = !state.expandedGroups[gid]
+  renderReqList()
 }
 
 function exportSession() {
@@ -53,6 +66,7 @@ window.closeModal = closeModal
 window.setModalView = setModalView
 window.selectReq = selectReq
 window.clearReqs = clearReqs
+window.toggleGroup = toggleGroup
 window.onProfileChange = onProfileChange
 window.toggleAllTools = toggleAllTools
 window.toggleGroupTools = toggleGroupTools
@@ -112,6 +126,7 @@ document.getElementById('profileSelect').addEventListener('change', (e) => {
 })
 
 document.getElementById('clearBtn').addEventListener('click', clearReqs)
+document.getElementById('viewToggleBtn').addEventListener('click', toggleViewMode)
 document.getElementById('exportBtn').addEventListener('click', exportSession)
 
 document.getElementById('exportMenu')?.addEventListener('click', (e) => {
@@ -186,5 +201,6 @@ document.addEventListener('keydown', (e) => {
 // ─── Init ───────────────────────────────────────────────────────────────────
 
 restoreSession(state)
+rebuildGroups()
 connect()
 renderAll()

@@ -141,38 +141,144 @@ export function renderReqList() {
     el.innerHTML = '<div class="empty"><div class="empty-icon waiting">&#x1F50D;</div><h2>Waiting for requests...</h2><p>Start Claude Code with:<br><code style="color:var(--cyan);font-size:11px">ANTHROPIC_BASE_URL=http://localhost:4455 claude</code></p></div>'
     return
   }
+
+  // Update toggle button state
+  const toggleBtn = document.getElementById('viewToggleBtn')
+  if (toggleBtn) {
+    toggleBtn.textContent = state.groupView ? 'Grouped' : 'Flat'
+    toggleBtn.classList.toggle('active', state.groupView)
+  }
+
+  if (state.groupView && Object.keys(state.groups).length > 0) {
+    renderGroupedList(el)
+  } else {
+    renderFlatList(el)
+  }
+}
+
+function renderFlatList(el) {
   let html = ''
   for (let i = state.reqs.length - 1; i >= 0; i--) {
-    const t = state.reqs[i]
-    const total = t.actualUsage ? t.actualUsage.input_tokens : t.totalEstimatedTokens
-    const fillPct = Math.min((total / t.budget) * 100, 100)
-    const color = fillPct > 95 ? 'var(--red)' : fillPct > 80 ? 'var(--orange)' : 'var(--green)'
-    const time = new Date(t.timestamp).toLocaleTimeString()
-
-    html += `<div class="req-card${i === state.selectedReq ? ' selected' : ''}" onclick="selectReq(${i})" title="Each request is one API call to Anthropic. Click to see its full context breakdown.">`
-    const tokenLabel = t.actualUsage ? fmt(t.actualUsage.input_tokens) : (t.tokenCountSource === 'count_tokens' ? fmt(t.totalEstimatedTokens) : '~' + fmt(t.totalEstimatedTokens))
-    html += `<div class="req-card-head"><span class="req-label">Req ${t.turn}</span><span class="req-tokens" style="color:${color}">${tokenLabel}</span></div>`
-    html += `<div class="req-mini-bar"><div class="req-mini-fill" style="width:${fillPct}%;background:${color}"></div></div>`
-    html += `<div class="req-meta"><span>${t.model}</span><span>${t.segments.length} segs</span><span>${time}</span></div>`
-
-    if (t.actualUsage) {
-      html += `<div class="req-actual">Actual: ${t.actualUsage.input_tokens.toLocaleString()} in / ${t.actualUsage.output_tokens.toLocaleString()} out</div>`
-    }
-
-    // Cost
-    if (t.actualCost) {
-      html += `<div class="req-cost" style="color:var(--cyan)">${fmtCost(t.actualCost.totalCost)}</div>`
-    } else if (t.estimatedCost) {
-      html += `<div class="req-cost" style="color:var(--text3)">~${fmtCost(t.estimatedCost.totalCost)}</div>`
-    }
-
-    // Filtering indicator
-    if (t.filteringActive) {
-      html += `<div style="margin-top:2px;font-size:9px;color:var(--orange);font-weight:600">Filtered: -${t.removedTools.length} tools</div>`
-    }
-
-    html += `</div>`
+    html += renderReqCard(i)
   }
+  el.innerHTML = html
+}
+
+function renderReqCard(i) {
+  const t = state.reqs[i]
+  const total = t.actualUsage ? t.actualUsage.input_tokens : t.totalEstimatedTokens
+  const fillPct = Math.min((total / t.budget) * 100, 100)
+  const color = fillPct > 95 ? 'var(--red)' : fillPct > 80 ? 'var(--orange)' : 'var(--green)'
+  const time = new Date(t.timestamp).toLocaleTimeString()
+
+  let html = `<div class="req-card${i === state.selectedReq ? ' selected' : ''}" onclick="selectReq(${i})" title="Each request is one API call to Anthropic. Click to see its full context breakdown.">`
+  const tokenLabel = t.actualUsage ? fmt(t.actualUsage.input_tokens) : (t.tokenCountSource === 'count_tokens' ? fmt(t.totalEstimatedTokens) : '~' + fmt(t.totalEstimatedTokens))
+  html += `<div class="req-card-head"><span class="req-label">Req ${t.turn}</span><span class="req-tokens" style="color:${color}">${tokenLabel}</span></div>`
+  html += `<div class="req-mini-bar"><div class="req-mini-fill" style="width:${fillPct}%;background:${color}"></div></div>`
+  html += `<div class="req-meta"><span>${t.model}</span><span>${t.segments.length} segs</span><span>${time}</span></div>`
+
+  if (t.actualUsage) {
+    html += `<div class="req-actual">Actual: ${t.actualUsage.input_tokens.toLocaleString()} in / ${t.actualUsage.output_tokens.toLocaleString()} out</div>`
+  }
+
+  if (t.actualCost) {
+    html += `<div class="req-cost" style="color:var(--cyan)">${fmtCost(t.actualCost.totalCost)}</div>`
+  } else if (t.estimatedCost) {
+    html += `<div class="req-cost" style="color:var(--text3)">~${fmtCost(t.estimatedCost.totalCost)}</div>`
+  }
+
+  if (t.filteringActive) {
+    html += `<div style="margin-top:2px;font-size:9px;color:var(--orange);font-weight:600">Filtered: -${t.removedTools.length} tools</div>`
+  }
+
+  html += `</div>`
+  return html
+}
+
+function renderGroupedList(el) {
+  // Get group IDs sorted by most recent first
+  const groupIds = Object.keys(state.groups)
+    .map(Number)
+    .sort((a, b) => b - a)
+
+  let html = ''
+  for (const gid of groupIds) {
+    const group = state.groups[gid]
+    const expanded = state.expandedGroups[gid] !== false // default to expanded for first
+
+    // Compute group totals
+    let totalCost = 0
+    let totalTokens = 0
+    for (const ri of group.reqIndices) {
+      const t = state.reqs[ri]
+      if (!t) continue
+      if (t.actualCost) totalCost += t.actualCost.totalCost
+      else if (t.estimatedCost) totalCost += t.estimatedCost.totalCost
+      totalTokens += t.actualUsage?.input_tokens ?? t.totalEstimatedTokens ?? 0
+    }
+
+    const reqCount = group.reqIndices.length
+    const sessionKeys = Object.keys(group.sessions)
+    const isMultiSession = sessionKeys.length > 1
+    const turnNum = gid + 1
+
+    // Group header
+    html += `<div class="group-card">`
+    html += `<div class="group-header" onclick="toggleGroup(${gid})">`
+    html += `<span class="group-chevron ${expanded ? 'expanded' : ''}">&#9654;</span>`
+    html += `<span class="group-title">Turn ${turnNum}</span>`
+    html += `<div class="group-summary">`
+    html += `<span class="group-tokens">${fmt(totalTokens)}</span>`
+    html += `<span class="group-cost">${fmtCost(totalCost)}</span>`
+    html += `<span class="group-req-count">${reqCount} req${reqCount !== 1 ? 's' : ''}</span>`
+    html += `</div></div>`
+
+    // Children
+    html += `<div class="group-children ${expanded ? '' : 'collapsed'}">`
+
+    if (isMultiSession) {
+      // Multiple sessions: show session labels
+      // Main session first (most messages), then subagents
+      const sorted = sessionKeys.sort((a, b) => {
+        const aCount = group.sessions[a].reqIndices.length
+        const bCount = group.sessions[b].reqIndices.length
+        return bCount - aCount
+      })
+
+      let sessionNum = 0
+      for (const sh of sorted) {
+        const session = group.sessions[sh]
+        const model = session.model || 'unknown'
+        const isMain = sessionNum === 0
+        const label = isMain ? 'Main' : 'Subagent'
+        const pillClass = isMain ? 'main' : 'subagent'
+
+        html += `<div class="group-session-label">`
+        html += `<span class="session-pill ${pillClass}">${label}</span>`
+        html += `<span>${model} · ${session.reqIndices.length} req${session.reqIndices.length !== 1 ? 's' : ''}</span>`
+        html += `</div>`
+
+        for (const ri of session.reqIndices) {
+          html += renderReqCard(ri)
+        }
+        sessionNum++
+      }
+    } else {
+      // Single session: just render requests
+      for (const ri of group.reqIndices) {
+        html += renderReqCard(ri)
+      }
+    }
+
+    // Time range
+    const start = new Date(group.startTime).toLocaleTimeString()
+    const end = new Date(group.endTime).toLocaleTimeString()
+    const timeLabel = start === end ? start : `${start} – ${end}`
+    html += `<div class="group-time">${timeLabel}</div>`
+
+    html += `</div></div>`
+  }
+
   el.innerHTML = html
 }
 
