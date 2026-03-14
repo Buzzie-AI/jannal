@@ -155,7 +155,9 @@ let lastRequestTime = 0;
 let lastHumanText = null;      // most recent human text (detects new user messages)
 let lastFirstText = null;      // first human text in conversation (detects new conversations)
 let primarySessionHash = null; // tracks the canonical/main conversation session
-const GAP_THRESHOLD = 45000; // 45 seconds
+const seenHashes = new Set();  // hashes seen in current group (prevents subagent reclassification)
+const GAP_THRESHOLD = 45000;   // 45 seconds
+const NEW_MAIN_MSG_THRESHOLD = 20; // messages above this = likely main session, not subagent
 
 function simpleHash(str) {
   let hash = 5381;
@@ -250,30 +252,35 @@ function extractFirstHumanText(body) {
 /**
  * Assign a group (turn) ID to a request.
  *
- * Two-signal heuristic for the primary session:
- *   1. "First text" — the first human message in the conversation. Changes
- *      only when a genuinely new conversation starts (new session, compaction,
- *      different terminal). Catches new conversations sharing the same system
- *      prompt / session hash.
- *   2. "Last text" — the most recent human message. Changes when the user
- *      types a new message within the same conversation. Catches consecutive
- *      user turns within a single session.
+ * Three-layer heuristic:
  *
- * Non-primary session hashes (subagents) never create new groups.
+ * 1. Primary session (hash matches): check two text-change signals.
+ *    - "First text" change → new conversation (different terminal/compaction).
+ *    - "Last text" change → new user message in same conversation.
+ *
+ * 2. Unknown hash + high message count (> 20): a different main session
+ *    from another thread/folder. Main sessions carry full conversation
+ *    history (50-200+ messages), subagents start fresh (1-5 messages).
+ *    Promotes to primary and starts a new group.
+ *
+ * 3. Unknown hash + low message count: subagent → stays in current group.
+ *    Once a hash is seen in a group, it's never reclassified (prevents a
+ *    subagent with growing message count from being promoted later).
+ *
  * Time gap (45s) remains as a fallback safety net.
- *
- * Residual edge case: if the first request after a gap is a subagent,
- * primarySessionHash gets initialized wrong until the next gap reset.
  */
 function assignGroup(body) {
   const now = Date.now();
   const sessionHash = getSessionHash(body);
+  const msgCount = (body.messages || []).length;
 
   // Time gap: reset everything, establish primary session
   if (activeGroupId === null || (now - lastRequestTime) > GAP_THRESHOLD) {
     primarySessionHash = sessionHash;
     lastHumanText = extractLastHumanText(body);
     lastFirstText = extractFirstHumanText(body);
+    seenHashes.clear();
+    seenHashes.add(sessionHash);
     activeGroupId = groupCounter++;
     lastRequestTime = now;
     return activeGroupId;
@@ -281,17 +288,15 @@ function assignGroup(body) {
 
   lastRequestTime = now;
 
-  // Only the primary session can advance to a new group
+  // Layer 1: Primary session — check for new user message
   if (sessionHash === primarySessionHash) {
     const currentLastText = extractLastHumanText(body);
     const currentFirstText = extractFirstHumanText(body);
 
-    // Signal 1: first human text changed → new conversation entirely
     const firstTextChanged = currentFirstText !== null
       && lastFirstText !== null
       && currentFirstText !== lastFirstText;
 
-    // Signal 2: last human text changed → new user message in same conversation
     const lastTextChanged = currentLastText !== null
       && lastHumanText !== null
       && currentLastText !== lastHumanText;
@@ -299,14 +304,26 @@ function assignGroup(body) {
     if (firstTextChanged || lastTextChanged) {
       lastHumanText = currentLastText;
       lastFirstText = currentFirstText;
+      seenHashes.clear();
+      seenHashes.add(sessionHash);
       activeGroupId = groupCounter++;
     } else {
       if (currentLastText !== null) lastHumanText = currentLastText;
       if (currentFirstText !== null) lastFirstText = currentFirstText;
     }
   }
+  // Layer 2: Never-seen hash + high message count = different main session
+  else if (!seenHashes.has(sessionHash) && msgCount > NEW_MAIN_MSG_THRESHOLD) {
+    primarySessionHash = sessionHash;
+    lastHumanText = extractLastHumanText(body);
+    lastFirstText = extractFirstHumanText(body);
+    seenHashes.clear();
+    seenHashes.add(sessionHash);
+    activeGroupId = groupCounter++;
+  }
+  // Layer 3: Known hash or low message count = subagent → same group
 
-  // Non-primary sessions (subagents) stay in current group
+  seenHashes.add(sessionHash);
   return activeGroupId;
 }
 
