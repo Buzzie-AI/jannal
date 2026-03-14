@@ -119,7 +119,29 @@ function renderToolsView(body) {
   const isAllTools = state.activeProfile === 'All Tools'
   const groups = groupToolsByServer(tools)
 
+  // Tool usage analytics this session
+  const toolUsageCounts = {}
+  for (const r of state.reqs) {
+    for (const name of (r.toolsUsed || [])) {
+      toolUsageCounts[name] = (toolUsageCounts[name] || 0) + 1
+    }
+  }
+  const usedToolsList = Object.entries(toolUsageCounts).sort((a, b) => b[1] - a[1])
+  const totalUsed = usedToolsList.length
+
   let html = '<div class="modal-tools">'
+
+  // Usage analytics banner
+  if (totalUsed > 0) {
+    html += `<div class="tool-usage-analytics">`
+    html += `<div class="tool-usage-title">Session usage: ${totalUsed} tool${totalUsed !== 1 ? 's' : ''} used</div>`
+    html += `<div class="tool-usage-list">`
+    for (const [name, count] of usedToolsList.slice(0, 8)) {
+      html += `<span class="tool-usage-item"><span class="tool-usage-name">${escapeHtml(name)}</span><span class="tool-usage-count">×${count}</span></span>`
+    }
+    if (usedToolsList.length > 8) html += `<span class="tool-usage-more">+${usedToolsList.length - 8} more</span>`
+    html += `</div></div>`
+  }
 
   // Header with select all / none
   const checkedCount = tools.filter(t => isToolEnabled(t.name, profile, isAllTools)).length

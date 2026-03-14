@@ -29,3 +29,17 @@ export async function setActiveProfile(name) {
   })
   return resp.json()
 }
+
+export async function exportProfiles() {
+  const resp = await fetch('/api/profiles/export')
+  return resp.json()
+}
+
+export async function importProfiles(data) {
+  const resp = await fetch('/api/profiles/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  return resp.json()
+}

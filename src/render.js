@@ -1,6 +1,6 @@
 import { state } from './state.js'
 import { getSegColor, getSegLabel, fmt, fmtCost, escapeHtml } from './utils.js'
-import { getDailyCost } from './session.js'
+import { getDailyCost, checkBudgetAlert } from './session.js'
 
 // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -62,6 +62,18 @@ export function renderStatus() {
     dailyEl.textContent = `Today: ${fmtCost(daily)}`
   } else {
     dailyEl.style.display = 'none'
+  }
+
+  // Budget alert banner (when daily cost exceeds user-set limit)
+  const alertResult = checkBudgetAlert(daily)
+  const budgetBanner = document.getElementById('budgetAlertBanner')
+  if (budgetBanner) {
+    if (alertResult.exceeded) {
+      budgetBanner.style.display = 'flex'
+      budgetBanner.innerHTML = `<span>Daily budget exceeded: ${fmtCost(alertResult.current)} / $${alertResult.limit} limit</span><button class="budget-banner-dismiss" onclick="this.parentElement.style.display='none'">Dismiss</button>`
+    } else {
+      budgetBanner.style.display = 'none'
+    }
   }
 }
 
@@ -235,6 +247,10 @@ function renderReqCard(i) {
     html += `<div class="req-cost" style="color:var(--text3)">~${fmtCost(t.estimatedCost.totalCost)}</div>`
   }
 
+  if (t.latencyMs != null) {
+    html += `<div class="req-latency" style="font-size:9px;color:var(--text3)">${t.latencyMs}ms</div>`
+  }
+
   if (t.filteringActive) {
     html += `<div style="margin-top:2px;font-size:9px;color:var(--orange);font-weight:600">Filtered: -${t.removedTools.length} tools</div>`
   }
@@ -371,6 +387,15 @@ export function renderDetail() {
     if (req.tokensSaved) {
       html += `<div class="usage-row"><span class="usage-label">Tokens saved</span><span class="usage-value" style="color:var(--green)">~${fmt(req.tokensSaved)}</span></div>`
     }
+    html += `</div>`
+  }
+
+  // Latency (TTFT, total duration)
+  if (req.latencyMs != null || req.ttftMs != null) {
+    html += `<div class="usage-box">`
+    html += `<div class="usage-box-title">Request latency</div>`
+    if (req.ttftMs != null) html += `<div class="usage-row"><span class="usage-label">Time to first token</span><span class="usage-value" style="color:var(--cyan)">${req.ttftMs}ms</span></div>`
+    if (req.latencyMs != null) html += `<div class="usage-row"><span class="usage-label">Total duration</span><span class="usage-value" style="color:var(--cyan)">${req.latencyMs}ms</span></div>`
     html += `</div>`
   }
 

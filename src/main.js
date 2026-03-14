@@ -3,8 +3,9 @@ import { state } from './state.js'
 import { connect, rebuildGroups } from './ws.js'
 import { renderAll, renderContextBar, renderReqList, renderDetail, copyClaudeCommand } from './render.js'
 import { openModal, closeModal, setModalView, toggleAllTools, toggleGroupTools, toggleGroupAccordion, toggleGroupCheckbox, onToolToggle, saveCurrentAsProfile, createProfileFromThisTurn, filterModalContent, copyModalContent } from './modal.js'
-import { onProfileChange } from './profiles.js'
-import { restoreSession, exportSessionJSON, exportSessionCSV, downloadExport, persistSession } from './session.js'
+import { onProfileChange, renderProfileSelector } from './profiles.js'
+import { exportProfiles, importProfiles } from './api.js'
+import { restoreSession, exportSessionJSON, exportSessionCSV, downloadExport, persistSession, getDailyCost, getDailyBudgetAlert, setDailyBudgetAlert, checkBudgetAlert } from './session.js'
 import { initTheme, toggleTheme } from './theme.js'
 
 // ─── Request selection & clearing ──────────────────────────────────────────
@@ -135,6 +136,58 @@ document.getElementById('profileSelect').addEventListener('change', (e) => {
   onProfileChange(e.target.value)
 })
 
+document.getElementById('profileMenuBtn')?.addEventListener('click', (e) => {
+  e.stopPropagation()
+  document.getElementById('profileMenu')?.classList.toggle('open')
+})
+
+document.getElementById('exportProfilesBtn')?.addEventListener('click', async () => {
+  try {
+    const data = await exportProfiles()
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `jannal-profiles-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (err) { console.error('Export failed:', err) }
+  document.getElementById('profileMenu')?.classList.remove('open')
+})
+
+document.getElementById('importProfilesBtn')?.addEventListener('click', () => {
+  document.getElementById('importProfilesInput')?.click()
+  document.getElementById('profileMenu')?.classList.remove('open')
+})
+
+document.getElementById('setBudgetBtn')?.addEventListener('click', () => {
+  const current = getDailyBudgetAlert()
+  const v = prompt('Daily spending alert limit ($). Leave empty to clear.', current ? String(current) : '')
+  if (v !== null) {
+    const num = parseFloat(v)
+    setDailyBudgetAlert(isNaN(num) || num <= 0 ? null : num)
+    renderAll()
+  }
+  document.getElementById('profileMenu')?.classList.remove('open')
+})
+
+document.getElementById('importProfilesInput')?.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0]
+  if (!file) return
+  try {
+    const text = await file.text()
+    const data = JSON.parse(text)
+    const result = await importProfiles(data)
+    if (result.success) {
+      const fresh = await fetch('/api/profiles').then(r => r.json())
+      state.profiles = fresh.profiles
+      renderProfileSelector()
+      renderAll()
+    }
+  } catch (err) { console.error('Import failed:', err) }
+  e.target.value = ''
+})
+
 document.getElementById('clearBtn').addEventListener('click', clearReqs)
 document.getElementById('viewToggleBtn').addEventListener('click', toggleViewMode)
 document.getElementById('exportBtn').addEventListener('click', exportSession)
@@ -152,6 +205,11 @@ document.addEventListener('click', (e) => {
   const dropdown = document.querySelector('.export-dropdown')
   if (menu?.classList.contains('open') && dropdown && !dropdown.contains(e.target)) {
     menu.classList.remove('open')
+  }
+  const profileMenu = document.getElementById('profileMenu')
+  const profileWrapper = document.querySelector('.profile-wrapper')
+  if (profileMenu?.classList.contains('open') && profileWrapper && !profileWrapper.contains(e.target)) {
+    profileMenu.classList.remove('open')
   }
 })
 

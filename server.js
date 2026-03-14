@@ -477,6 +477,16 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    // ── API: Export profiles (full JSON for backup/share) ──
+    if (req.url === "/api/profiles/export") {
+      jsonResponse(res, 200, {
+        profiles,
+        activeProfile,
+        exportedAt: new Date().toISOString(),
+      });
+      return;
+    }
+
     // ── API: Get active profile ──
     if (req.url === "/api/active-profile") {
       jsonResponse(res, 200, { active: activeProfile, profile: profiles[activeProfile] || null });
@@ -502,6 +512,33 @@ const server = http.createServer((req, res) => {
         saveProfiles();
         broadcast({ type: "profiles_updated", profiles, active: activeProfile });
         jsonResponse(res, 200, { success: true, profile: profiles[name] });
+      } catch (err) {
+        jsonResponse(res, 400, { error: err.message });
+      }
+    });
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/profiles/import") {
+    readBody(req).then((buf) => {
+      try {
+        const data = JSON.parse(buf.toString());
+        const imported = data.profiles || {};
+        let merged = 0;
+        for (const [name, profile] of Object.entries(imported)) {
+          if (name === "All Tools") continue;
+          if (profile && typeof profile === "object" && Array.isArray(profile.tools)) {
+            profiles[name] = {
+              name,
+              mode: profile.mode || "blocklist",
+              tools: profile.tools || [],
+            };
+            merged++;
+          }
+        }
+        saveProfiles();
+        broadcast({ type: "profiles_updated", profiles, active: activeProfile });
+        jsonResponse(res, 200, { success: true, merged });
       } catch (err) {
         jsonResponse(res, 400, { error: err.message });
       }
@@ -554,6 +591,7 @@ const server = http.createServer((req, res) => {
 
     let forwardBuffer = bodyBuffer; // default: forward original
     let filteringInfo = null;
+    let analysisForResponse = null;
 
     // Analyze + filter if it's a messages endpoint
     if (req.url.includes("/messages")) {
@@ -590,6 +628,7 @@ const server = http.createServer((req, res) => {
           analysis.tokensSaved = filteringInfo.tokensSaved;
         }
 
+        analysisForResponse = analysis;
         broadcast({ type: "request", ...analysis });
         console.log(
           `[R${analysis.turn}] ${analysis.model} | ${analysis.segments.length} segs | ~${analysis.totalEstimatedTokens} tokens | $${analysis.estimatedCost.totalCost.toFixed(4)}${filteringInfo ? ` | FILTERED: ${filteringInfo.originalToolCount}→${filteringInfo.filteredToolCount} tools (-${filteringInfo.removedTools.length})` : ""}`
@@ -634,6 +673,9 @@ const server = http.createServer((req, res) => {
     fwdHeaders["host"] = ANTHROPIC_HOST;
     fwdHeaders["content-length"] = forwardBuffer.length; // use filtered buffer length
 
+    const requestStartTime = Date.now();
+    let ttftMs = null;
+
     const proxyReq = https.request(
       {
         hostname: ANTHROPIC_HOST,
@@ -650,12 +692,18 @@ const server = http.createServer((req, res) => {
         res.writeHead(proxyRes.statusCode, resHeaders);
 
         let responseData = "";
+        let firstChunk = true;
         proxyRes.on("data", (chunk) => {
+          if (firstChunk) {
+            ttftMs = Date.now() - requestStartTime;
+            firstChunk = false;
+          }
           res.write(chunk);
           responseData += chunk.toString();
         });
         proxyRes.on("end", () => {
           res.end();
+          const durationMs = Date.now() - requestStartTime;
 
           if (req.url.includes("/messages")) {
             const { inputTokens, outputTokens, stopReason } = parseStreamedResponse(responseData);
@@ -670,22 +718,26 @@ const server = http.createServer((req, res) => {
               } catch (e) { /* streaming response, already parsed above */ }
             }
 
-            if (actualInput || actualOutput) {
-              // Find model for this request from reqStore
+            if (actualInput || actualOutput || ttftMs != null) {
               const latestReqId = reqCounter - 1;
               const stored = reqStore.get(latestReqId);
               const model = stored?.model || "unknown";
               const cost = calculateCost(actualInput, actualOutput, model);
+              const turn = analysisForResponse?.turn ?? latestReqId;
 
               broadcast({
                 type: "response_complete",
+                turn,
                 usage: { input_tokens: actualInput, output_tokens: actualOutput },
                 cost,
                 stopReason,
+                latencyMs: durationMs,
+                ttftMs: ttftMs ?? undefined,
                 timestamp: Date.now(),
               });
+              const latencyStr = ttftMs != null ? ` | TTFT ${ttftMs}ms | ${durationMs}ms total` : "";
               console.log(
-                `  → Response: ${actualInput} in / ${actualOutput} out [${stopReason}] | $${cost.totalCost.toFixed(4)}`
+                `  → Response: ${actualInput} in / ${actualOutput} out [${stopReason}] | $${cost.totalCost.toFixed(4)}${latencyStr}`
               );
             }
           }

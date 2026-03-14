@@ -9,8 +9,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script>(function(){var t=localStorage.getItem('jannal_theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')})()</script>
-  <script type="module" crossorigin src="/assets/index-DRycvy20.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-CG257wgd.css">
+  <script type="module" crossorigin src="/assets/index-BGc1XYff.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CfiT-Mnm.css">
 </head>
 <body>
 <div class="noise-overlay" aria-hidden="true"></div>
@@ -26,9 +26,20 @@
       <input class="global-search" type="text" placeholder="Search all requests..." id="globalSearch" />
       <div class="global-search-results" id="globalSearchResults"></div>
     </div>
-    <select class="profile-select" id="profileSelect">
-      <option value="All Tools">All Tools</option>
-    </select>
+    <div class="profile-wrapper">
+      <select class="profile-select" id="profileSelect">
+        <option value="All Tools">All Tools</option>
+      </select>
+      <div class="profile-dropdown">
+        <button class="profile-menu-btn" id="profileMenuBtn" title="Profile options">&#8942;</button>
+        <div id="profileMenu" class="profile-menu">
+          <button class="profile-menu-item" id="exportProfilesBtn">Export profiles</button>
+          <button class="profile-menu-item" id="importProfilesBtn">Import profiles</button>
+          <button class="profile-menu-item" id="setBudgetBtn">Set daily budget alert</button>
+        </div>
+      </div>
+    </div>
+    <input type="file" id="importProfilesInput" accept=".json" style="display:none">
     <span class="filter-badge" id="filterBadge" style="display:none">FILTERING</span>
     <div class="status">
       <div class="status-dot disconnected" id="statusDot"></div>
@@ -45,6 +56,7 @@
   </div>
 </div>
 
+<div id="budgetAlertBanner" class="budget-alert-banner" style="display:none"></div>
 <!-- Context Bar -->
 <div class="bar-container">
   <div class="bar-outer" id="barOuter">

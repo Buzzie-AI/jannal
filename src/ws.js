@@ -122,12 +122,16 @@ export function connect() {
     }
 
     if (data.type === 'response_complete') {
-      const latest = state.reqs[state.reqs.length - 1]
-      if (latest) {
-        latest.actualUsage = data.usage
-        latest.stopReason = data.stopReason
+      const req = data.turn != null
+        ? state.reqs.find(t => t.turn === data.turn)
+        : state.reqs[state.reqs.length - 1]
+      if (req) {
+        req.actualUsage = data.usage
+        req.stopReason = data.stopReason
+        req.latencyMs = data.latencyMs
+        req.ttftMs = data.ttftMs
         if (data.cost) {
-          latest.actualCost = data.cost
+          req.actualCost = data.cost
           addDailyCost(data.cost.totalCost)
         }
         renderAll()

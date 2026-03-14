@@ -2,6 +2,7 @@
 
 const STORAGE_KEY = 'jannal_session'
 const DAILY_COSTS_KEY = 'jannal_daily_costs'
+const DAILY_BUDGET_KEY = 'jannal_daily_budget_alert'
 const DEBOUNCE_MS = 500
 
 let persistTimeout = null
@@ -107,6 +108,31 @@ export function getDailyCost() {
     const data = JSON.parse(localStorage.getItem(DAILY_COSTS_KEY) || '{}')
     return data[today] || 0
   } catch (e) { return 0 }
+}
+
+export function getDailyBudgetAlert() {
+  try {
+    const v = localStorage.getItem(DAILY_BUDGET_KEY)
+    return v ? parseFloat(v) : null
+  } catch (e) { return null }
+}
+
+export function setDailyBudgetAlert(value) {
+  try {
+    if (value == null || value <= 0) {
+      localStorage.removeItem(DAILY_BUDGET_KEY)
+    } else {
+      localStorage.setItem(DAILY_BUDGET_KEY, String(value))
+    }
+  } catch (e) { /* ignore */ }
+}
+
+export function checkBudgetAlert(dailyCost) {
+  const limit = getDailyBudgetAlert()
+  if (limit != null && limit > 0 && dailyCost >= limit) {
+    return { exceeded: true, limit, current: dailyCost }
+  }
+  return { exceeded: false }
 }
 
 export function downloadExport(content, filename) {
