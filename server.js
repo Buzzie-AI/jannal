@@ -154,8 +154,6 @@ let activeGroupId = null;
 let lastRequestTime = 0;
 let lastHumanText = null;      // most recent human text (detects new user messages)
 let lastFirstText = null;      // first human text in conversation (detects new conversations)
-let primarySessionHash = null; // tracks the canonical/main conversation session
-const seenHashes = new Set();  // hashes seen in current group (prevents subagent reclassification)
 const GAP_THRESHOLD = 45000;   // 45 seconds
 const NEW_MAIN_MSG_THRESHOLD = 20; // messages above this = likely main session, not subagent
 
@@ -252,88 +250,71 @@ function extractFirstHumanText(body) {
 /**
  * Assign a group (turn) ID to a request.
  *
- * Three-layer heuristic:
+ * Uses first human text as conversation identity (NOT session hash, which
+ * is unstable due to dynamic system prompt content like gitStatus).
  *
- * 1. Primary session (hash matches): check two text-change signals.
- *    - "First text" change → new conversation (different terminal/compaction).
- *    - "Last text" change → new user message in same conversation.
+ * 1. Same conversation (first text matches): check if last text changed
+ *    (user typed a new message) → new group. Otherwise → same group.
  *
- * 2. Unknown hash + high message count (> 20): a different main session
- *    from another thread/folder. Main sessions carry full conversation
- *    history (50-200+ messages), subagents start fresh (1-5 messages).
- *    Promotes to primary and starts a new group.
+ * 2. Different conversation + high message count (> 20): different main
+ *    session from another thread/folder → new group.
  *
- * 3. Unknown hash + low message count: subagent → stays in current group.
- *    Once a hash is seen in a group, it's never reclassified (prevents a
- *    subagent with growing message count from being promoted later).
+ * 3. Different conversation + low message count: subagent → same group.
  *
  * Time gap (45s) remains as a fallback safety net.
  */
 function assignGroup(body) {
   const now = Date.now();
-  const sessionHash = getSessionHash(body);
   const msgCount = (body.messages || []).length;
   const model = body.model || "unknown";
   const gap = now - lastRequestTime;
+  const currentFirstText = extractFirstHumanText(body);
+  const currentLastText = extractLastHumanText(body);
 
-  // Time gap: reset everything, establish primary session
+  // Time gap: reset and start new group
   if (activeGroupId === null || gap > GAP_THRESHOLD) {
-    primarySessionHash = sessionHash;
-    lastHumanText = extractLastHumanText(body);
-    lastFirstText = extractFirstHumanText(body);
-    seenHashes.clear();
-    seenHashes.add(sessionHash);
+    lastFirstText = currentFirstText;
+    lastHumanText = currentLastText;
     activeGroupId = groupCounter++;
     lastRequestTime = now;
-    console.log(`  [group] NEW group=${activeGroupId} reason=gap(${gap}ms) hash=${sessionHash} model=${model} msgs=${msgCount}`);
+    console.log(`  [group] NEW group=${activeGroupId} reason=gap(${gap}ms) model=${model} msgs=${msgCount} firstText="${(currentFirstText || "").slice(0, 40)}"`);
     return activeGroupId;
   }
 
   lastRequestTime = now;
 
-  // Layer 1: Primary session — check for new user message
-  if (sessionHash === primarySessionHash) {
-    const currentLastText = extractLastHumanText(body);
-    const currentFirstText = extractFirstHumanText(body);
+  // Recognize same conversation by matching first human text
+  const sameConversation = currentFirstText !== null
+    && lastFirstText !== null
+    && currentFirstText === lastFirstText;
 
-    const firstTextChanged = currentFirstText !== null
-      && lastFirstText !== null
-      && currentFirstText !== lastFirstText;
-
+  if (sameConversation) {
+    // Same conversation: check if user typed a new message
     const lastTextChanged = currentLastText !== null
       && lastHumanText !== null
       && currentLastText !== lastHumanText;
 
-    if (firstTextChanged || lastTextChanged) {
+    if (lastTextChanged) {
       lastHumanText = currentLastText;
-      lastFirstText = currentFirstText;
-      seenHashes.clear();
-      seenHashes.add(sessionHash);
       activeGroupId = groupCounter++;
-      console.log(`  [group] NEW group=${activeGroupId} reason=text_change(first=${firstTextChanged},last=${lastTextChanged}) hash=${sessionHash} model=${model} msgs=${msgCount} lastText="${(currentLastText || "").slice(0, 60)}"`);
+      console.log(`  [group] NEW group=${activeGroupId} reason=new_user_msg model=${model} msgs=${msgCount} lastText="${(currentLastText || "").slice(0, 40)}"`);
     } else {
       if (currentLastText !== null) lastHumanText = currentLastText;
-      if (currentFirstText !== null) lastFirstText = currentFirstText;
-      console.log(`  [group] SAME group=${activeGroupId} reason=primary_no_change hash=${sessionHash} model=${model} msgs=${msgCount}`);
+      console.log(`  [group] SAME group=${activeGroupId} reason=same_conv model=${model} msgs=${msgCount}`);
     }
   }
-  // Layer 2: Never-seen hash + high message count = different main session
-  else if (!seenHashes.has(sessionHash) && msgCount > NEW_MAIN_MSG_THRESHOLD) {
-    primarySessionHash = sessionHash;
-    lastHumanText = extractLastHumanText(body);
-    lastFirstText = extractFirstHumanText(body);
-    seenHashes.clear();
-    seenHashes.add(sessionHash);
+  // Different conversation + long history = different main session → new group
+  else if (msgCount > NEW_MAIN_MSG_THRESHOLD) {
+    lastFirstText = currentFirstText;
+    lastHumanText = currentLastText;
     activeGroupId = groupCounter++;
-    console.log(`  [group] NEW group=${activeGroupId} reason=new_main(msgs=${msgCount}) hash=${sessionHash} model=${model}`);
+    console.log(`  [group] NEW group=${activeGroupId} reason=diff_main(msgs=${msgCount}) model=${model} firstText="${(currentFirstText || "").slice(0, 40)}"`);
   }
-  // Layer 3: Known hash or low message count = subagent → same group
+  // Different conversation + short history = subagent → same group
   else {
-    const known = seenHashes.has(sessionHash);
-    console.log(`  [group] SAME group=${activeGroupId} reason=non_primary(known=${known},msgs=${msgCount}) hash=${sessionHash} model=${model}`);
+    console.log(`  [group] SAME group=${activeGroupId} reason=subagent(msgs=${msgCount}) model=${model}`);
   }
 
-  seenHashes.add(sessionHash);
   return activeGroupId;
 }
 
