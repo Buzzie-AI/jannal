@@ -315,7 +315,7 @@ function buildMenu() {
             })
           },
         },
-        { label: 'Check for Updates...', click: () => autoUpdater.checkForUpdatesAndNotify() },
+        { label: 'Check for Updates...', click: () => checkForUpdatesManually() },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
@@ -383,6 +383,8 @@ function buildMenu() {
 
 // ─── Auto-updates ───────────────────────────────────────────────────────────
 
+let manualUpdateCheck = false
+
 function setupAutoUpdater() {
   if (IS_DEV) return
 
@@ -392,11 +394,31 @@ function setupAutoUpdater() {
 
   autoUpdater.on('update-available', (info) => {
     console.log(`Update available: v${info.version}`)
+    if (manualUpdateCheck) {
+      dialog.showMessageBox(mainWindow || undefined, {
+        type: 'info',
+        title: 'Update Available',
+        message: `Jannal v${info.version} is being downloaded.`,
+        detail: 'You will be notified when it is ready to install.',
+      })
+      manualUpdateCheck = false
+    }
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    if (manualUpdateCheck) {
+      dialog.showMessageBox(mainWindow || undefined, {
+        type: 'info',
+        title: 'No Updates',
+        message: `Jannal v${app.getVersion()} is the latest version.`,
+      })
+      manualUpdateCheck = false
+    }
   })
 
   autoUpdater.on('update-downloaded', (info) => {
-    const win = mainWindow || undefined
-    dialog.showMessageBox(win, {
+    manualUpdateCheck = false
+    dialog.showMessageBox(mainWindow || undefined, {
       type: 'info',
       title: 'Update Ready',
       message: `Jannal v${info.version} has been downloaded.`,
@@ -412,10 +434,32 @@ function setupAutoUpdater() {
 
   autoUpdater.on('error', (err) => {
     console.error('Auto-updater error:', err)
+    if (manualUpdateCheck) {
+      dialog.showMessageBox(mainWindow || undefined, {
+        type: 'error',
+        title: 'Update Error',
+        message: 'Failed to check for updates.',
+        detail: err.message,
+      })
+      manualUpdateCheck = false
+    }
   })
 
   autoUpdater.checkForUpdatesAndNotify()
   setInterval(() => autoUpdater.checkForUpdatesAndNotify(), 4 * 60 * 60 * 1000)
+}
+
+function checkForUpdatesManually() {
+  if (IS_DEV) {
+    dialog.showMessageBox(mainWindow || undefined, {
+      type: 'info',
+      title: 'Dev Mode',
+      message: 'Auto-updates are disabled in development.',
+    })
+    return
+  }
+  manualUpdateCheck = true
+  autoUpdater.checkForUpdates()
 }
 
 // ─── App lifecycle ──────────────────────────────────────────────────────────
@@ -464,11 +508,9 @@ app.whenReady().then(async () => {
 
   await refreshProfiles()
   createTray()
+  createWindow()
   startProfilePolling()
   setupAutoUpdater()
-
-  // Don't open the window on launch — just the tray icon.
-  // User clicks tray icon or "Open Inspector" to see the window.
 })
 
 app.on('window-all-closed', () => {
