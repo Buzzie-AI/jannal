@@ -138,6 +138,11 @@ function applyToolFilter(tools, profileName) {
 
 loadProfiles();
 
+// ─── Router telemetry ────────────────────────────────────────────────────────
+
+const routerLog = require("./router/log");
+routerLog.initDataDir();
+
 // ─── Group tracking ─────────────────────────────────────────────────────────
 
 let groupCounter = 0;
@@ -256,8 +261,28 @@ function analyzeRequest(body) {
   const sessionHash = getSessionHash(body);
   const groupId = assignGroup();
 
-  // Store full content + model server-side
-  reqStore.set(reqId, { fullContents, model });
+  // Extract telemetry fields for router eval events
+  const toolsSeg = segments.find((s) => s.type === "tools");
+  const userMessages = (body.messages || [])
+    .filter((m) => m.role === "user")
+    .map((m) => {
+      const text = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+      return text.slice(0, 500);
+    })
+    .slice(-3);
+
+  // Store full content + model + telemetry fields server-side
+  reqStore.set(reqId, {
+    fullContents,
+    model,
+    sessionHash,
+    groupId,
+    stream: !!body.stream,
+    toolNames: toolsSeg?.toolNames || [],
+    toolCount: toolsSeg?.count || 0,
+    estimatedToolTokens: toolsSeg?.tokens || 0,
+    userMessages,
+  });
 
   // Evict old requests if over limit
   if (reqStore.size > MAX_STORED_REQS) {
@@ -687,14 +712,16 @@ const server = http.createServer((req, res) => {
               } catch (e) { /* streaming response, already parsed above */ }
             }
 
-            if (actualInput || actualOutput) {
-              // Use captured requestTurn for correct request correlation
-              const reqId = requestTurn ?? reqCounter - 1;
-              const stored = reqStore.get(reqId);
-              if (stored) stored.toolsUsed = toolsUsed;
-              const model = stored?.model || "unknown";
-              const cost = calculateCost(actualInput, actualOutput, model);
+            // Correlate response to originating request
+            const reqId = requestTurn ?? reqCounter - 1;
+            const stored = reqStore.get(reqId);
+            if (stored) stored.toolsUsed = toolsUsed;
+            const model = stored?.model || "unknown";
+            const cost = (actualInput || actualOutput)
+              ? calculateCost(actualInput, actualOutput, model)
+              : null;
 
+            if (actualInput || actualOutput) {
               broadcast({
                 type: "response_complete",
                 turn: reqId,
@@ -708,6 +735,18 @@ const server = http.createServer((req, res) => {
               console.log(
                 `  → [R${reqId}] Response: ${actualInput} in / ${actualOutput} out [${stopReason}] | $${cost.totalCost.toFixed(4)}${toolsInfo}`
               );
+            }
+
+            // Emit router eval event for ALL /messages responses (Step 0b telemetry)
+            try {
+              const evalEvent = routerLog.buildEvalEvent(
+                { reqId, stored, activeProfile, profiles },
+                { mode: "off" },
+                { stopReason, actualInput, actualOutput, cost, toolsUsed }
+              );
+              routerLog.emitEvalEvent(evalEvent);
+            } catch (err) {
+              console.error("  → [router] eval event error:", err.message);
             }
           }
         });
