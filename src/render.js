@@ -31,13 +31,20 @@ export function renderStatus() {
   const reqBadge = document.getElementById('reqBadge')
   if (reqBadge) reqBadge.textContent = `Req ${state.reqs.length}`
 
-  // Session cost
+  // Session cost + savings
   let totalCost = 0
+  let totalSaved = 0
   for (const t of state.reqs) {
     if (t.actualCost) totalCost += t.actualCost.totalCost
     else if (t.estimatedCost) totalCost += t.estimatedCost.totalCost
+    totalSaved += t.router?.estimated_tokens_saved || 0
   }
   document.getElementById('sessionCost').textContent = fmtCost(totalCost)
+  const savedEl = document.getElementById('sessionSaved')
+  if (savedEl) {
+    savedEl.textContent = `Saved ~${fmt(totalSaved)}`
+    savedEl.classList.toggle('has-savings', totalSaved > 0)
+  }
 
   // Tokens saved badge (when filtering active)
   const tokensSavedBadge = document.getElementById('tokensSavedBadge')
