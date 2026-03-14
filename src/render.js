@@ -431,6 +431,7 @@ export function renderDetail() {
     html += `<div class="usage-row"><span class="usage-label">Mode</span><span class="usage-value router-mode-${r.mode}">${modeLabel}</span></div>`
 
     if (r.eligible) {
+      const isShadow = r.mode === 'shadow'
       html += `<div class="usage-row"><span class="usage-label">Matched by</span><span class="usage-value" style="color:var(--cyan)">${escapeHtml(r.matched_by || '\u2014')}</span></div>`
       if (r.confidence != null) {
         const confColor = r.confidence >= 0.9 ? 'var(--green)' : r.confidence >= 0.7 ? 'var(--amber)' : 'var(--orange)'
@@ -438,13 +439,13 @@ export function renderDetail() {
       }
       if (r.selected_groups && r.selected_groups.length > 0) {
         const groups = r.selected_groups.filter(g => g !== 'core').join(', ') || '\u2014'
-        html += `<div class="usage-row"><span class="usage-label">Selected groups</span><span class="usage-value" style="color:var(--text2);font-size:10px">${escapeHtml(groups)}</span></div>`
+        html += `<div class="usage-row"><span class="usage-label">${isShadow ? 'Would keep' : 'Selected groups'}</span><span class="usage-value" style="color:var(--text2);font-size:10px">${escapeHtml(groups)}</span></div>`
       }
       if (r.stripped_groups && r.stripped_groups.length > 0) {
-        html += `<div class="usage-row"><span class="usage-label">Stripped groups</span><span class="usage-value" style="color:var(--text3);font-size:10px">${escapeHtml(r.stripped_groups.join(', '))}</span></div>`
+        html += `<div class="usage-row"><span class="usage-label">${isShadow ? 'Would strip' : 'Stripped groups'}</span><span class="usage-value" style="color:var(--text3);font-size:10px">${escapeHtml(r.stripped_groups.join(', '))}</span></div>`
       }
       if (r.estimated_tokens_saved > 0) {
-        html += `<div class="usage-row"><span class="usage-label">Est. savings</span><span class="usage-value" style="color:var(--green)">~${fmt(r.estimated_tokens_saved)} tokens</span></div>`
+        html += `<div class="usage-row"><span class="usage-label">${isShadow ? 'Potential savings' : 'Est. savings'}</span><span class="usage-value" style="color:var(--green)">~${fmt(r.estimated_tokens_saved)} tokens</span></div>`
       }
       if (r.sticky_reused) {
         html += `<div style="margin-top:4px;font-size:9px;color:var(--purple)">Sticky route reused</div>`

@@ -201,9 +201,24 @@ function getSessionHash(body) {
 }
 
 /**
+ * Strip Claude Code infrastructure tags from user message text.
+ * Used by grouping helpers and router intent extraction for consistent text cleaning.
+ */
+function stripInfrastructureTags(text) {
+  return text
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+    .replace(/<command-message>[\s\S]*?<\/command-message>/g, "")
+    .replace(/<command-name>[\s\S]*?<\/command-name>/g, "")
+    .replace(/<command-args>[\s\S]*?<\/command-args>/g, "")
+    .replace(/<local-command-stdout>[\s\S]*?<\/local-command-stdout>/g, "")
+    .replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/g, "")
+    .trim();
+}
+
+/**
  * Walk body.messages backwards to find the most recent human-authored text.
  * Skips tool_result-only user messages (which are tool output, not human input).
- * Strips <system-reminder> tags injected by Claude Code.
+ * Strips Claude Code infrastructure tags.
  * Returns first 200 chars for comparison, or null if no human text found.
  */
 function extractLastHumanText(body) {
@@ -211,16 +226,17 @@ function extractLastHumanText(body) {
   for (let i = body.messages.length - 1; i >= 0; i--) {
     const msg = body.messages[i];
     if (msg.role !== "user") continue;
-    if (typeof msg.content === "string" && msg.content.trim()) {
-      return msg.content.slice(0, 200);
+    if (typeof msg.content === "string") {
+      const cleaned = stripInfrastructureTags(msg.content);
+      if (cleaned.length > 0) return cleaned.slice(0, 200);
+      continue;
     }
     if (Array.isArray(msg.content)) {
       const textParts = msg.content
         .filter((b) => b.type === "text" && b.text)
         .map((b) => b.text);
       if (textParts.length === 0) continue; // tool_result-only → skip
-      let combined = textParts.join("\n");
-      combined = combined.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
+      const combined = stripInfrastructureTags(textParts.join("\n"));
       if (combined.length > 0) return combined.slice(0, 200);
     }
   }
@@ -238,16 +254,17 @@ function extractFirstHumanText(body) {
   for (let i = 0; i < body.messages.length; i++) {
     const msg = body.messages[i];
     if (msg.role !== "user") continue;
-    if (typeof msg.content === "string" && msg.content.trim()) {
-      return msg.content.slice(0, 200);
+    if (typeof msg.content === "string") {
+      const cleaned = stripInfrastructureTags(msg.content);
+      if (cleaned.length > 0) return cleaned.slice(0, 200);
+      continue;
     }
     if (Array.isArray(msg.content)) {
       const textParts = msg.content
         .filter((b) => b.type === "text" && b.text)
         .map((b) => b.text);
       if (textParts.length === 0) continue;
-      let combined = textParts.join("\n");
-      combined = combined.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
+      const combined = stripInfrastructureTags(textParts.join("\n"));
       if (combined.length > 0) return combined.slice(0, 200);
     }
   }
@@ -432,11 +449,7 @@ function analyzeRequest(body) {
       return "";
     })
     .filter((text) => text.length > 0) // Drop empty messages (tool_result-only)
-    .map((text) => {
-      // Strip <system-reminder>...</system-reminder> tags — they're Claude Code
-      // system prompts injected into user messages, noise for intent detection.
-      return text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
-    })
+    .map((text) => stripInfrastructureTags(text))
     .filter((text) => text.length > 0) // Re-filter after stripping
     .map((text) => text.slice(0, 500))
     .slice(-3);

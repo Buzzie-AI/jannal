@@ -271,6 +271,7 @@ function buildEvalEvent(reqMeta, routerResult, responseResult) {
       last_user_message: lastMsg.slice(0, config.max_last_user_message_chars),
       last_user_message_truncated: lastMsg.length > config.max_last_user_message_chars,
       last_user_message_chars: Math.min(lastMsg.length, config.max_last_user_message_chars),
+      intent_message: routerResult.intent_message || null, // what the router actually matched against
       recent_user_messages: userMessages
         .slice(-(config.max_recent_user_messages))
         .map((m) => m.slice(0, 300)),
@@ -328,8 +329,10 @@ function computeEvaluation(routerResult, toolsUsed) {
   const strippedGroups = routerResult.stripped_groups || [];
   const selectedGroups = routerResult.selected_groups || [];
 
-  // Default: no evaluation data when router didn't make a prediction
-  if (!eligible || !routerResult.matched_by || routerResult.matched_by === "fallback_all") {
+  // Default: no evaluation data when router didn't make a prediction.
+  // Note: default_core_only IS evaluated — it's a deliberate prediction that
+  // specialized tools aren't needed, and we want would_have_missed tracking.
+  if (!eligible || !routerResult.matched_by) {
     return {
       would_have_missed: false,
       missed_tools: [],

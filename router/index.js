@@ -38,6 +38,42 @@ function setStickyRoute(sessionHash, data) {
   });
 }
 
+// ─── Intent message selection ─────────────────────────────────────────────────
+//
+// Picks the best message from userMessages for routing intent detection.
+// Skips compact/session continuation boilerplate that carries no tool intent.
+
+const BOILERPLATE_PREFIXES = [
+  "This session is being continued from a previous conversation",
+  "Summary:",
+  "The following is a summary of the conversation",
+];
+
+/**
+ * Select the most useful user message for intent routing.
+ * Scans backwards (most recent first), skipping boilerplate messages.
+ *
+ * @param {string[]} userMessages - Recent user messages (already tag-stripped)
+ * @returns {string} Best message for routing, or "" if none found
+ */
+function selectIntentMessage(userMessages) {
+  if (!userMessages || userMessages.length === 0) return "";
+
+  for (let i = userMessages.length - 1; i >= 0; i--) {
+    const msg = userMessages[i];
+    if (!msg || msg.trim().length < 5) continue;
+
+    // Skip compact/session continuation boilerplate
+    const isBoilerplate = BOILERPLATE_PREFIXES.some((p) => msg.startsWith(p));
+    if (isBoilerplate) continue;
+
+    return msg;
+  }
+
+  // All messages were boilerplate — no intent signal
+  return "";
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 function initRouter() {
@@ -133,13 +169,13 @@ async function routeRequest(metadata) {
     };
   }
 
-  // 6. Run matchers
+  // 6. Run matchers — use intent-selected message, not blind last message
   const userMessages = stored.userMessages || [];
-  const lastMsg = userMessages[userMessages.length - 1] || "";
+  const intentMsg = selectIntentMessage(userMessages);
 
-  const rulesResult = matchRules(lastMsg, catalogGroups);
+  const rulesResult = matchRules(intentMsg, catalogGroups);
   const embeddingsResult = isEmbeddingsReady()
-    ? await rankGroups(lastMsg, catalogGroups)
+    ? await rankGroups(intentMsg, catalogGroups)
     : null;
 
   // 7. Merge signals
@@ -176,11 +212,12 @@ async function routeRequest(metadata) {
     confidence = embeddingsResult.confidence;
     reason = "Embedding similarity";
   } else {
-    // Neither matched — fallback_all
-    matchedBy = "fallback_all";
-    mergedGroups = [...catalogGroups];
+    // Neither matched — exclude strip-eligible specialized groups by default.
+    // Core, unknown MCP, and non-strip-eligible catalog groups are always retained.
+    matchedBy = "default_core_only";
+    mergedGroups = []; // no specialized groups opted-in
     confidence = 0;
-    reason = "No rules or embeddings match";
+    reason = "No specialized signal — strip-eligible groups excluded";
   }
 
   // 8. Build selected_groups
@@ -196,13 +233,13 @@ async function routeRequest(metadata) {
 
   const selectedGroupsArr = [...selectedGroups];
 
-  // 9. Compute stripped groups (only catalog-backed can be stripped)
-  let strippedGroups;
-  if (matchedBy === "fallback_all") {
-    strippedGroups = [];
-  } else {
-    strippedGroups = catalogGroups.filter((g) => !selectedGroups.has(g));
-  }
+  // 9. Compute stripped groups — only strip-eligible catalog groups not selected
+  const strippedGroups = catalogGroups.filter((g) => {
+    if (selectedGroups.has(g)) return false;
+    // Only strip groups explicitly marked as strip-eligible in the catalog
+    const entry = getCatalogEntry(g);
+    return entry && entry.stripEligible === true;
+  });
 
   // 10. Compute tool counts and token savings
   let strippedToolCount = 0;
@@ -249,6 +286,7 @@ async function routeRequest(metadata) {
     estimated_tokens_saved: estimatedTokensSaved,
     reason,
     sticky_reused: false,
+    intent_message: intentMsg.slice(0, 200), // what the router matched against
   };
 }
 

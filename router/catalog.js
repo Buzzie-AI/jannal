@@ -11,30 +11,35 @@ const CATALOG = {
     description: "Project management, issues, tickets, sprint planning, roadmaps",
     examples: ["create issue", "plan sprint", "update ticket", "list issues"],
     toolPrefixes: ["mcp__claude_ai_linear__", "mcp__linear__", "mcp__linear-server__"],
+    stripEligible: true, // safe to exclude when no positive signal
   },
   firebase: {
     label: "Firebase",
     description: "Cloud functions, Firestore, hosting, auth, storage, app management",
     examples: ["deploy to firebase", "query firestore", "firebase auth", "create project"],
     toolPrefixes: ["mcp__plugin_firebase_firebase__", "mcp__firebase__"],
+    stripEligible: true,
   },
   playwright: {
     label: "Playwright",
     description: "Browser automation, UI testing, screenshots, page interaction",
     examples: ["take screenshot", "click button", "browser test", "navigate to page"],
     toolPrefixes: ["mcp__plugin_playwright_playwright__", "mcp__playwright__"],
+    stripEligible: true,
   },
   context7: {
     label: "Context7",
     description: "Documentation lookup, library docs, code examples",
     examples: ["look up docs", "find documentation", "library reference"],
     toolPrefixes: ["mcp__plugin_context7_context7__", "mcp__context7__"],
+    stripEligible: true,
   },
   supabase: {
     label: "Supabase",
     description: "Database queries, auth, storage, edge functions, data management",
     examples: ["query database", "insert data", "supabase auth", "database schema"],
     toolPrefixes: ["mcp__supabase__", "mcp__supabase-production__", "mcp__supabase-staging__"],
+    stripEligible: true,
   },
 };
 
