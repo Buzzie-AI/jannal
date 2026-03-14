@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { getAvailableGroups, getToolGroup, setCoreTools } = require("./grouping");
 
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
@@ -99,6 +100,8 @@ function loadState() {
     console.error("  [router] Failed to load state:", err.message);
     routerState = { ...DEFAULT_STATE, updated_at: new Date().toISOString() };
   }
+  // Sync core tools to grouping module so all classification uses one source
+  setCoreTools(routerState.config.core_tools || DEFAULT_STATE.config.core_tools);
 }
 
 function saveState() {
@@ -270,7 +273,7 @@ function buildEvalEvent(reqMeta, routerResult, responseResult) {
       tool_count_core: coreCount,
       tool_count_noncore: (stored?.toolCount ?? 0) - coreCount,
       estimated_tool_tokens_total: stored?.estimatedToolTokens ?? 0,
-      available_groups: null,
+      available_groups: getAvailableGroups(toolNames),
       toolset_hash: computeToolsetHash(toolNames),
       available_tools_sample: toolNames.slice(0, 10),
     },
@@ -302,7 +305,7 @@ function buildEvalEvent(reqMeta, routerResult, responseResult) {
       output_tokens: responseResult.actualOutput || 0,
       cost_usd_total: responseResult.cost?.totalCost ?? 0,
       tool_use_names: responseResult.toolsUsed || [],
-      tool_use_groups: [],
+      tool_use_groups: [...new Set((responseResult.toolsUsed || []).map(getToolGroup))],
       tool_use_count: (responseResult.toolsUsed || []).length,
     },
     evaluation: {
