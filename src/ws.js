@@ -1,5 +1,5 @@
 import { state, MAX_REQS } from './state.js'
-import { renderAll, renderStatus } from './render.js'
+import { renderAll, renderStatus, renderDetail } from './render.js'
 import { renderProfileSelector } from './profiles.js'
 import { persistSession, addDailyCost } from './session.js'
 
@@ -86,7 +86,9 @@ export function connect() {
     if (data.type === 'connected') {
       if (data.profiles) state.profiles = data.profiles
       if (data.activeProfile) state.activeProfile = data.activeProfile
+      if (data.routerMode != null) state.routerMode = data.routerMode
       renderProfileSelector()
+      renderStatus()
       return
     }
 
@@ -137,6 +139,32 @@ export function connect() {
         renderAll()
         persistSession(state)
       }
+    }
+
+    if (data.type === 'router_decision') {
+      const req = state.reqs.find(r => r.turn === data.turn)
+      if (req) {
+        req.router = {
+          mode: data.mode,
+          eligible: data.eligible,
+          skip_reason: data.skip_reason,
+          matched_by: data.matched_by,
+          confidence: data.confidence,
+          selected_groups: data.selected_groups,
+          stripped_groups: data.stripped_groups,
+          estimated_tokens_saved: data.estimated_tokens_saved,
+          sticky_reused: data.sticky_reused,
+        }
+        if (state.selectedReq !== null && state.reqs[state.selectedReq]?.turn === data.turn) {
+          renderDetail()
+        }
+        persistSession(state)
+      }
+    }
+
+    if (data.type === 'router_mode_changed') {
+      state.routerMode = data.mode
+      renderStatus()
     }
 
     if (data.type === 'profiles_updated') {

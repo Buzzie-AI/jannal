@@ -84,6 +84,7 @@ const DEFAULT_STATE = {
     errors_written: 0,
     last_event_id: null,
     last_rotation_at: null,
+    last_metrics_refresh_at: null,
   },
   // Note: sticky routes are in-memory only (router/index.js).
   // Durable persistence deferred to Step 4.
@@ -480,6 +481,7 @@ function recomputeMetrics() {
     };
 
     atomicWriteJson(METRICS_FILE, metrics);
+    routerState.runtime.last_metrics_refresh_at = new Date().toISOString();
   } catch (err) {
     console.error("  [router] Failed to recompute metrics:", err.message);
     emitErrorEvent({

@@ -1,6 +1,7 @@
 import { state } from './state.js'
 import { getSegColor, getSegLabel, fmt, fmtCost, escapeHtml } from './utils.js'
 import { getDailyCost } from './session.js'
+import { getDailyCost } from './session.js'
 
 // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -38,30 +39,51 @@ export function renderStatus() {
 
   // Tokens saved badge (when filtering active)
   const tokensSavedBadge = document.getElementById('tokensSavedBadge')
-  if (state.activeProfile !== 'All Tools') {
-    let totalSaved = 0
-    for (const t of state.reqs) {
-      if (t.filteringActive && t.tokensSaved) totalSaved += t.tokensSaved
-    }
-    if (totalSaved > 0) {
-      tokensSavedBadge.style.display = 'inline'
-      tokensSavedBadge.textContent = `~${fmt(totalSaved)} saved`
-      tokensSavedBadge.title = 'Tokens saved by tool filtering this session'
+  if (tokensSavedBadge) {
+    if (state.activeProfile !== 'All Tools') {
+      let totalSaved = 0
+      for (const t of state.reqs) {
+        if (t.filteringActive && t.tokensSaved) totalSaved += t.tokensSaved
+      }
+      if (totalSaved > 0) {
+        tokensSavedBadge.style.display = 'inline'
+        tokensSavedBadge.textContent = `~${fmt(totalSaved)} saved`
+        tokensSavedBadge.title = 'Tokens saved by tool filtering this session'
+      } else {
+        tokensSavedBadge.style.display = 'none'
+      }
     } else {
       tokensSavedBadge.style.display = 'none'
     }
-  } else {
-    tokensSavedBadge.style.display = 'none'
   }
 
   // Daily cost
   const daily = getDailyCost()
   const dailyEl = document.getElementById('dailyCost')
-  if (daily > 0) {
-    dailyEl.style.display = 'block'
-    dailyEl.textContent = `Today: ${fmtCost(daily)}`
-  } else {
-    dailyEl.style.display = 'none'
+  if (dailyEl) {
+    if (daily > 0) {
+      dailyEl.style.display = 'block'
+      dailyEl.textContent = `Today: ${fmtCost(daily)}`
+    } else {
+      dailyEl.style.display = 'none'
+    }
+  }
+
+  // Router badge
+  const badge = document.getElementById('routerBadge')
+  if (badge) {
+    const mode = state.routerMode || 'off'
+    const labels = { off: 'Router Off', shadow: 'Router Shadow', auto: 'Router Auto' }
+    badge.textContent = labels[mode] || 'Router'
+    badge.className = `router-badge router-badge--${mode}`
+
+    // Mark active option in popover
+    const popover = document.getElementById('routerPopover')
+    if (popover) {
+      for (const btn of popover.querySelectorAll('.router-popover-opt')) {
+        btn.classList.toggle('active', btn.dataset.mode === mode)
+      }
+    }
   }
 }
 
@@ -374,6 +396,48 @@ export function renderDetail() {
     html += `<div class="usage-row"><span class="usage-label">Removed</span><span class="usage-value" style="color:var(--orange)">${req.removedTools.length} tools</span></div>`
     if (req.tokensSaved) {
       html += `<div class="usage-row"><span class="usage-label">Tokens saved</span><span class="usage-value" style="color:var(--green)">~${fmt(req.tokensSaved)}</span></div>`
+    }
+    html += `</div>`
+  }
+
+  // Router decision
+  if (req.router) {
+    const r = req.router
+    const modeLabel = r.mode === 'shadow' ? 'Shadow (observe only)' : r.mode === 'auto' ? 'Auto' : r.mode || 'off'
+
+    html += `<div class="router-box">`
+    html += `<div class="router-box-title">Router Decision</div>`
+    html += `<div class="usage-row"><span class="usage-label">Mode</span><span class="usage-value router-mode-${r.mode}">${modeLabel}</span></div>`
+
+    if (r.eligible) {
+      html += `<div class="usage-row"><span class="usage-label">Matched by</span><span class="usage-value" style="color:var(--cyan)">${escapeHtml(r.matched_by || '\u2014')}</span></div>`
+      if (r.confidence != null) {
+        const confColor = r.confidence >= 0.9 ? 'var(--green)' : r.confidence >= 0.7 ? 'var(--amber)' : 'var(--orange)'
+        html += `<div class="usage-row"><span class="usage-label">Confidence</span><span class="usage-value" style="color:${confColor}">${(r.confidence * 100).toFixed(0)}%</span></div>`
+      }
+      if (r.selected_groups && r.selected_groups.length > 0) {
+        const groups = r.selected_groups.filter(g => g !== 'core').join(', ') || '\u2014'
+        html += `<div class="usage-row"><span class="usage-label">Selected groups</span><span class="usage-value" style="color:var(--text2);font-size:10px">${escapeHtml(groups)}</span></div>`
+      }
+      if (r.stripped_groups && r.stripped_groups.length > 0) {
+        html += `<div class="usage-row"><span class="usage-label">Stripped groups</span><span class="usage-value" style="color:var(--text3);font-size:10px">${escapeHtml(r.stripped_groups.join(', '))}</span></div>`
+      }
+      if (r.estimated_tokens_saved > 0) {
+        html += `<div class="usage-row"><span class="usage-label">Est. savings</span><span class="usage-value" style="color:var(--green)">~${fmt(r.estimated_tokens_saved)} tokens</span></div>`
+      }
+      if (r.sticky_reused) {
+        html += `<div style="margin-top:4px;font-size:9px;color:var(--purple)">Sticky route reused</div>`
+      }
+    } else {
+      const reason = r.skip_reason === 'router_off' ? 'Router is off'
+        : r.skip_reason === 'below_threshold' ? 'Below threshold'
+        : r.skip_reason === 'no_request_data' ? 'No request data'
+        : (r.skip_reason || 'Skipped')
+      html += `<div class="usage-row"><span class="usage-label">Status</span><span class="usage-value" style="color:var(--text3)">${escapeHtml(reason)}</span></div>`
+    }
+
+    if (r.mode === 'shadow') {
+      html += `<div class="router-shadow-note">All tools forwarded \u2014 shadow mode</div>`
     }
     html += `</div>`
   }

@@ -28,6 +28,15 @@
       <option value="All Tools">All Tools</option>
     </select>
     <span class="filter-badge" id="filterBadge" style="display:none">FILTERING</span>
+    <div class="router-badge-wrapper">
+      <span class="router-badge" id="routerBadge"></span>
+      <div class="router-popover" id="routerPopover">
+        <div class="router-popover-title">Router Mode</div>
+        <button class="router-popover-opt" data-mode="off"><span class="router-opt-dot router-opt-dot--off"></span>Off<span class="router-opt-desc">Router disabled</span></button>
+        <button class="router-popover-opt" data-mode="shadow"><span class="router-opt-dot router-opt-dot--shadow"></span>Shadow<span class="router-opt-desc">Observe only, no filtering</span></button>
+        <button class="router-popover-opt" data-mode="auto"><span class="router-opt-dot router-opt-dot--auto"></span>Auto<span class="router-opt-desc">Route and filter tools</span></button>
+      </div>
+    </div>
     <div class="status">
       <div class="status-dot disconnected" id="statusDot"></div>
       <span id="statusText" style="color:var(--text3)">Connecting...</span>

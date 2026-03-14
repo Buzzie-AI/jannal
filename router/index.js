@@ -4,7 +4,7 @@
 // manages sticky routes, enforces latency budget. Runs in shadow mode: predicts
 // which groups are needed but does NOT filter the forwarded tool set.
 
-const { getConfig } = require("./log");
+const { getConfig, getState } = require("./log");
 const { getAvailableGroups, getToolGroup, groupTools } = require("./grouping");
 const { getCatalogEntry, CATALOG } = require("./catalog");
 const { matchRules } = require("./rules");
@@ -288,6 +288,7 @@ function getRouterStatus() {
       sticky_route_count: stickyRoutes.size,
       last_error: embStatus.error,
       last_error_at: null,
+      last_metrics_refresh_at: getState()?.runtime?.last_metrics_refresh_at ?? null,
     },
     capabilities: {
       can_route: config.mode !== "off",

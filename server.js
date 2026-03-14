@@ -694,6 +694,29 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── API: Set router mode ──
+  if (req.method === "POST" && req.url === "/api/router/mode") {
+    readBody(req).then((buf) => {
+      try {
+        const data = JSON.parse(buf.toString());
+        const mode = data.mode;
+        if (!["off", "shadow", "auto"].includes(mode)) {
+          jsonResponse(res, 400, { error: "Invalid mode. Must be off, shadow, or auto." });
+          return;
+        }
+        const state = routerLog.getState();
+        state.config.mode = mode;
+        routerLog.saveState();
+        console.log(`  [router] Mode changed to: ${mode}`);
+        broadcast({ type: "router_mode_changed", mode });
+        jsonResponse(res, 200, { mode });
+      } catch (err) {
+        jsonResponse(res, 400, { error: "Invalid JSON" });
+      }
+    });
+    return;
+  }
+
   // ── API: Profile management (POST / DELETE) ──
   if (req.method === "POST" && req.url === "/api/profiles") {
     readBody(req).then((buf) => {
@@ -821,6 +844,23 @@ const server = http.createServer((req, res) => {
           }
         } catch (err) {
           console.error("  [router] prediction error:", err.message);
+        }
+
+        // Broadcast router decision to frontend
+        if ("eligible" in routerResult) {
+          broadcast({
+            type: "router_decision",
+            turn: analysis.turn,
+            mode: routerResult.mode,
+            eligible: routerResult.eligible,
+            skip_reason: routerResult.skip_reason ?? null,
+            matched_by: routerResult.matched_by ?? null,
+            confidence: routerResult.confidence ?? null,
+            selected_groups: routerResult.selected_groups ?? null,
+            stripped_groups: routerResult.stripped_groups ?? [],
+            estimated_tokens_saved: routerResult.estimated_tokens_saved ?? 0,
+            sticky_reused: routerResult.sticky_reused ?? false,
+          });
         }
 
         // Fire count_tokens in parallel for accurate count (non-blocking)

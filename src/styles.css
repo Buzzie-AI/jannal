@@ -128,7 +128,7 @@ body {
 /* ─── Header ─── */
 .header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 24px; position: relative;
+  padding: 14px 24px; position: relative; z-index: 100;
   background: linear-gradient(180deg, var(--overlay-2) 0%, transparent 100%);
 }
 .header::after {
@@ -187,6 +187,54 @@ body {
   font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px;
   background: rgba(251,146,60,0.2); color: var(--orange); letter-spacing: 0.05em;
   border: 1px solid rgba(251,146,60,0.3);
+}
+.router-badge-wrapper { position: relative; }
+.router-badge {
+  font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px;
+  letter-spacing: 0.05em; cursor: pointer; user-select: none;
+  transition: opacity var(--duration-fast);
+}
+.router-badge:hover { opacity: 0.8; }
+.router-badge--off {
+  background: var(--overlay-4); color: var(--text3);
+  border: 1px solid var(--overlay-8);
+}
+.router-badge--shadow {
+  background: rgba(167,139,250,0.15); color: var(--purple);
+  border: 1px solid rgba(167,139,250,0.25);
+}
+.router-badge--auto {
+  background: rgba(34,211,238,0.15); color: var(--cyan);
+  border: 1px solid rgba(34,211,238,0.25);
+}
+.router-popover {
+  display: none; position: absolute; top: calc(100% + 6px); right: 0;
+  background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 8px 0; min-width: 200px; z-index: 300;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+.router-popover.open { display: block; }
+.router-popover-title {
+  font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase;
+  letter-spacing: 0.08em; padding: 4px 12px 8px; border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.router-popover-opt {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 12px; background: none; border: none; color: var(--text);
+  font-size: 12px; font-family: var(--font-ui); cursor: pointer;
+  text-align: left; transition: background var(--duration-fast);
+}
+.router-popover-opt:hover { background: var(--overlay-6); }
+.router-popover-opt.active { background: var(--overlay-4); }
+.router-opt-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.router-opt-dot--off { background: var(--text3); }
+.router-opt-dot--shadow { background: var(--purple); }
+.router-opt-dot--auto { background: var(--cyan); }
+.router-opt-desc {
+  margin-left: auto; font-size: 9px; color: var(--text3);
 }
 
 /* Global search */
@@ -403,6 +451,14 @@ body {
 .filter-box-title { color: var(--orange); font-weight: 700; font-size: 11px; margin-bottom: 6px; }
 .warning-box { margin: 12px 16px; padding: 10px 12px; border-radius: 8px; background: rgba(234,179,8,0.06); border: 1px solid rgba(234,179,8,0.2); }
 .warning-box-title { color: var(--yellow); font-weight: 700; font-size: 11px; margin-bottom: 6px; }
+
+/* Router decision box */
+.router-box { margin: 12px 16px; padding: 10px 12px; border-radius: var(--radius-md); background: rgba(167,139,250,0.05); border: 1px solid rgba(167,139,250,0.15); }
+.router-box-title { color: var(--purple); font-weight: 700; font-size: 11px; margin-bottom: 6px; }
+.router-mode-shadow { color: var(--purple); }
+.router-mode-auto { color: var(--cyan); }
+.router-mode-off { color: var(--text3); }
+.router-shadow-note { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(167,139,250,0.12); font-size: 9px; color: var(--text3); font-style: italic; }
 
 /* ─── Modal ─── */
 .modal-overlay {
