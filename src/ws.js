@@ -105,12 +105,14 @@ export function connect() {
       } else {
         addReqToGroup(state.reqs.length - 1, data)
       }
+      const hadSelection = state.selectedReq !== null
       // Only auto-select if nothing is currently selected.
       // If the user is inspecting a request, don't steal focus.
-      if (state.selectedReq === null) {
+      if (!hadSelection) {
         state.selectedReq = state.reqs.length - 1
       }
-      renderAll()
+      // Skip detail re-render if user is inspecting a different request
+      renderAll({ skipDetail: hadSelection })
       persistSession(state)
     }
 
@@ -122,7 +124,9 @@ export function connect() {
         req.totalEstimatedTokens = data.exactInputTokens
         req.estimatedCost = data.estimatedCost
         req.tokenCountSource = 'count_tokens'
-        renderAll()
+        // Only re-render detail if this update is for the selected request
+        const isSelected = state.selectedReq !== null && state.reqs[state.selectedReq]?.turn === data.turn
+        renderAll({ skipDetail: !isSelected })
         persistSession(state)
       }
     }
@@ -140,7 +144,9 @@ export function connect() {
           addDailyCost(data.cost.totalCost)
         }
         if (data.toolsUsed) req.toolsUsed = data.toolsUsed
-        renderAll()
+        // Only re-render detail if this update is for the selected request
+        const isSelected = state.selectedReq !== null && state.reqs[state.selectedReq]?.turn === data.turn
+        renderAll({ skipDetail: !isSelected })
         persistSession(state)
       }
     }

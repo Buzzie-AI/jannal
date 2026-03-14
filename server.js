@@ -60,9 +60,16 @@ function getModelPricing(model) {
   return { input: 3, output: 15 }; // default to sonnet pricing
 }
 
-function calculateCost(inputTokens, outputTokens, model) {
+function calculateCost(inputTokens, outputTokens, model, cacheCreationTokens = 0, cacheReadTokens = 0) {
   const pricing = getModelPricing(model);
-  const inputCost = (inputTokens / 1_000_000) * pricing.input;
+  // Non-cached input tokens = total - cache_creation - cache_read
+  const baseInputTokens = Math.max(0, inputTokens - cacheCreationTokens - cacheReadTokens);
+  const baseCost = (baseInputTokens / 1_000_000) * pricing.input;
+  // Cache writes cost 25% more than base input
+  const cacheWriteCost = (cacheCreationTokens / 1_000_000) * pricing.input * 1.25;
+  // Cache reads cost 10% of base input
+  const cacheReadCost = (cacheReadTokens / 1_000_000) * pricing.input * 0.10;
+  const inputCost = baseCost + cacheWriteCost + cacheReadCost;
   const outputCost = (outputTokens / 1_000_000) * pricing.output;
   return { inputCost, outputCost, totalCost: inputCost + outputCost };
 }
@@ -479,6 +486,8 @@ function analyzeRequest(body) {
 function parseStreamedResponse(data) {
   const lines = data.split("\n");
   let inputTokens = 0;
+  let cacheCreationTokens = 0;
+  let cacheReadTokens = 0;
   let outputTokens = 0;
   let stopReason = null;
   const toolsUsed = [];
@@ -488,7 +497,10 @@ function parseStreamedResponse(data) {
     try {
       const event = JSON.parse(line.slice(6));
       if (event.type === "message_start" && event.message?.usage) {
-        inputTokens = event.message.usage.input_tokens || 0;
+        const u = event.message.usage;
+        inputTokens = u.input_tokens || 0;
+        cacheCreationTokens = u.cache_creation_input_tokens || 0;
+        cacheReadTokens = u.cache_read_input_tokens || 0;
       }
       if (event.type === "message_delta") {
         if (event.usage) outputTokens = event.usage.output_tokens || 0;
@@ -502,7 +514,17 @@ function parseStreamedResponse(data) {
     } catch (e) { /* skip */ }
   }
 
-  return { inputTokens, outputTokens, stopReason, toolsUsed };
+  // Total input = non-cached + cache-created + cache-read
+  const totalInputTokens = inputTokens + cacheCreationTokens + cacheReadTokens;
+
+  return {
+    inputTokens: totalInputTokens,
+    cacheCreationTokens,
+    cacheReadTokens,
+    outputTokens,
+    stopReason,
+    toolsUsed,
+  };
 }
 
 // ─── Accurate token counting via Anthropic API ──────────────────────────────
@@ -941,15 +963,18 @@ const server = http.createServer((req, res) => {
           res.end();
 
           if (req.url.includes("/messages")) {
-            const { inputTokens, outputTokens, stopReason, toolsUsed } = parseStreamedResponse(responseData);
+            const parsed = parseStreamedResponse(responseData);
+            let { inputTokens: actualInput, outputTokens: actualOutput, cacheCreationTokens, cacheReadTokens, stopReason, toolsUsed } = parsed;
 
-            let actualInput = inputTokens;
-            let actualOutput = outputTokens;
             if (!actualInput) {
               try {
                 const jsonRes = JSON.parse(responseData);
-                actualInput = jsonRes.usage?.input_tokens || 0;
-                actualOutput = jsonRes.usage?.output_tokens || 0;
+                const u = jsonRes.usage || {};
+                const nonCached = u.input_tokens || 0;
+                cacheCreationTokens = u.cache_creation_input_tokens || 0;
+                cacheReadTokens = u.cache_read_input_tokens || 0;
+                actualInput = nonCached + cacheCreationTokens + cacheReadTokens;
+                actualOutput = u.output_tokens || 0;
                 // Extract tool-use names from non-streaming response
                 if (Array.isArray(jsonRes.content)) {
                   for (const block of jsonRes.content) {
@@ -967,22 +992,30 @@ const server = http.createServer((req, res) => {
             if (stored) stored.toolsUsed = toolsUsed;
             const model = stored?.model || "unknown";
             const cost = (actualInput || actualOutput)
-              ? calculateCost(actualInput, actualOutput, model)
+              ? calculateCost(actualInput, actualOutput, model, cacheCreationTokens, cacheReadTokens)
               : null;
 
             if (actualInput || actualOutput) {
               broadcast({
                 type: "response_complete",
                 turn: reqId,
-                usage: { input_tokens: actualInput, output_tokens: actualOutput },
+                usage: {
+                  input_tokens: actualInput,
+                  output_tokens: actualOutput,
+                  cache_creation_input_tokens: cacheCreationTokens || 0,
+                  cache_read_input_tokens: cacheReadTokens || 0,
+                },
                 cost,
                 stopReason,
                 toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
                 timestamp: Date.now(),
               });
+              const cacheInfo = (cacheCreationTokens || cacheReadTokens)
+                ? ` (cache: ${cacheReadTokens} read, ${cacheCreationTokens} created)`
+                : "";
               const toolsInfo = toolsUsed.length > 0 ? ` | tools: ${toolsUsed.join(", ")}` : "";
               console.log(
-                `  → [R${reqId}] Response: ${actualInput} in / ${actualOutput} out [${stopReason}] | $${cost.totalCost.toFixed(4)}${toolsInfo}`
+                `  → [R${reqId}] Response: ${actualInput} in / ${actualOutput} out [${stopReason}] | $${cost.totalCost.toFixed(4)}${cacheInfo}${toolsInfo}`
               );
             }
 

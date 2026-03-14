@@ -1,16 +1,17 @@
 import { state } from './state.js'
 import { getSegColor, getSegLabel, fmt, fmtCost, escapeHtml } from './utils.js'
 import { getDailyCost } from './session.js'
-import { getDailyCost } from './session.js'
 
 // ─── Render ─────────────────────────────────────────────────────────────────
 
-export function renderAll() {
+export function renderAll(opts = {}) {
   renderStatus()
   renderContextBar()
   renderTokenChart()
   renderReqList()
-  renderDetail()
+  // Only re-render detail if the selected request's data changed,
+  // or if explicitly requested (e.g. user clicked a different request).
+  if (!opts.skipDetail) renderDetail()
   renderExportButton()
 }
 
@@ -27,7 +28,8 @@ export function renderStatus() {
   const text = document.getElementById('statusText')
   text.textContent = state.connected ? 'Connected' : 'Disconnected'
   text.style.color = state.connected ? 'var(--green)' : 'var(--red)'
-  document.getElementById('reqBadge').textContent = `Req ${state.reqs.length}`
+  const reqBadge = document.getElementById('reqBadge')
+  if (reqBadge) reqBadge.textContent = `Req ${state.reqs.length}`
 
   // Session cost
   let totalCost = 0
@@ -219,11 +221,16 @@ export function renderReqList() {
     toggleBtn.classList.toggle('active', state.groupView)
   }
 
+  // Preserve scroll position across re-renders
+  const scrollTop = el.scrollTop
+
   if (state.groupView && Object.keys(state.groups).length > 0) {
     renderGroupedList(el)
   } else {
     renderFlatList(el)
   }
+
+  el.scrollTop = scrollTop
 }
 
 function renderFlatList(el) {
@@ -239,32 +246,29 @@ function renderReqCard(i) {
   const total = t.actualUsage ? t.actualUsage.input_tokens : t.totalEstimatedTokens
   const fillPct = Math.min((total / t.budget) * 100, 100)
   const color = fillPct > 95 ? 'var(--red)' : fillPct > 80 ? 'var(--orange)' : 'var(--green)'
-  const time = new Date(t.timestamp).toLocaleTimeString()
 
-  let html = `<div class="req-card${i === state.selectedReq ? ' selected' : ''}" onclick="selectReq(${i})" title="Each request is one API call to Anthropic. Click to see its full context breakdown.">`
+  // Short model name: claude-opus-4-6 → opus-4-6, claude-haiku-4-5-20251001 → haiku-4-5
+  const shortModel = t.model.replace('claude-', '').replace(/-\d{8,}$/, '')
+
   const tokenLabel = t.actualUsage ? fmt(t.actualUsage.input_tokens) : (t.tokenCountSource === 'count_tokens' ? fmt(t.totalEstimatedTokens) : '~' + fmt(t.totalEstimatedTokens))
+
+  // Compact in/out display
+  let ioLabel = ''
+  if (t.actualUsage) {
+    ioLabel = `${fmt(t.actualUsage.input_tokens)} in / ${fmt(t.actualUsage.output_tokens)} out`
+  }
+
+  const cost = t.actualCost ? fmtCost(t.actualCost.totalCost) : t.estimatedCost ? '~' + fmtCost(t.estimatedCost.totalCost) : ''
+
+  let html = `<div class="req-card${i === state.selectedReq ? ' selected' : ''}" onclick="selectReq(${i})">`
+  // Row 1: Req N + token size + mini bar
   html += `<div class="req-card-head"><span class="req-label">Req ${t.turn}</span><span class="req-tokens" style="color:${color}">${tokenLabel}</span></div>`
   html += `<div class="req-mini-bar"><div class="req-mini-fill" style="width:${fillPct}%;background:${color}"></div></div>`
-  html += `<div class="req-meta"><span>${t.model}</span><span>${t.segments.length} segs</span><span>${time}</span></div>`
-
-  if (t.actualUsage) {
-    html += `<div class="req-actual">Actual: ${t.actualUsage.input_tokens.toLocaleString()} in / ${t.actualUsage.output_tokens.toLocaleString()} out</div>`
-  }
-
-  if (t.toolsUsed && t.toolsUsed.length > 0) {
-    html += `<div style="margin-top:2px;font-size:9px;color:var(--cyan)">&#x2192; ${t.toolsUsed.length} tool${t.toolsUsed.length > 1 ? 's' : ''} used</div>`
-  }
-
-  if (t.actualCost) {
-    html += `<div class="req-cost" style="color:var(--amber)">${fmtCost(t.actualCost.totalCost)}</div>`
-  } else if (t.estimatedCost) {
-    html += `<div class="req-cost" style="color:var(--text3)">~${fmtCost(t.estimatedCost.totalCost)}</div>`
-  }
-
-  if (t.filteringActive) {
-    html += `<div style="margin-top:2px;font-size:9px;color:var(--orange);font-weight:600">Filtered: -${t.removedTools.length} tools</div>`
-  }
-
+  // Row 2: model | in/out | cost
+  html += `<div class="req-meta"><span>${shortModel}</span>`
+  if (ioLabel) html += `<span class="req-io">${ioLabel}</span>`
+  if (cost) html += `<span class="req-cost-inline">${cost}</span>`
+  html += `</div>`
   html += `</div>`
   return html
 }
@@ -445,13 +449,23 @@ export function renderDetail() {
 
   // Usage + cost comparison
   if (req.actualUsage) {
-    const diff = req.actualUsage.input_tokens - req.totalEstimatedTokens
-    const diffPct = ((diff / req.actualUsage.input_tokens) * 100).toFixed(1)
+    const u = req.actualUsage
+    const cacheRead = u.cache_read_input_tokens || 0
+    const cacheCreate = u.cache_creation_input_tokens || 0
+    const hasCacheData = cacheRead > 0 || cacheCreate > 0
+    const diff = u.input_tokens - req.totalEstimatedTokens
+    const diffPct = u.input_tokens ? ((diff / u.input_tokens) * 100).toFixed(1) : '0.0'
     html += `<div class="usage-box">`
     html += `<div class="usage-row"><span class="usage-label">Estimated input</span><span class="usage-value estimated">~${req.totalEstimatedTokens.toLocaleString()}</span></div>`
-    html += `<div class="usage-row"><span class="usage-label">Actual input</span><span class="usage-value actual">${req.actualUsage.input_tokens.toLocaleString()}</span></div>`
+    html += `<div class="usage-row"><span class="usage-label">Actual input</span><span class="usage-value actual">${u.input_tokens.toLocaleString()}</span></div>`
+    if (hasCacheData) {
+      html += `<div class="usage-row"><span class="usage-label" style="padding-left:12px">Cache read</span><span class="usage-value" style="color:var(--green)">${cacheRead.toLocaleString()}</span></div>`
+      html += `<div class="usage-row"><span class="usage-label" style="padding-left:12px">Cache write</span><span class="usage-value" style="color:var(--cyan,var(--blue))">${cacheCreate.toLocaleString()}</span></div>`
+      const uncached = Math.max(0, u.input_tokens - cacheRead - cacheCreate)
+      html += `<div class="usage-row"><span class="usage-label" style="padding-left:12px">Uncached</span><span class="usage-value">${uncached.toLocaleString()}</span></div>`
+    }
     html += `<div class="usage-row"><span class="usage-label">Estimation error</span><span class="usage-value" style="color:${Math.abs(parseFloat(diffPct)) < 15 ? 'var(--green)' : 'var(--orange)'}">${diff > 0 ? '+' : ''}${diff.toLocaleString()} (${diffPct}%)</span></div>`
-    html += `<div class="usage-row"><span class="usage-label">Output tokens</span><span class="usage-value">${req.actualUsage.output_tokens.toLocaleString()}</span></div>`
+    html += `<div class="usage-row"><span class="usage-label">Output tokens</span><span class="usage-value">${u.output_tokens.toLocaleString()}</span></div>`
     if (req.actualCost) {
       html += `<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">`
       html += `<div class="usage-row"><span class="usage-label">Input cost</span><span class="usage-value" style="color:var(--amber)">${fmtCost(req.actualCost.inputCost)}</span></div>`
