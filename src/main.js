@@ -76,9 +76,9 @@ window.toggleGroupCheckbox = toggleGroupCheckbox
 window.onToolToggle = onToolToggle
 window.saveCurrentAsProfile = saveCurrentAsProfile
 window.createProfileFromThisTurn = createProfileFromThisTurn
+window.copyClaudeCommand = copyClaudeCommand
 window.filterModalContent = filterModalContent
 window.copyModalContent = copyModalContent
-window.copyClaudeCommand = copyClaudeCommand
 
 // ─── Global search ──────────────────────────────────────────────────────────
 

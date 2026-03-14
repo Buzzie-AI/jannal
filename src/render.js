@@ -55,32 +55,12 @@ export function renderStatus() {
     savedEl.classList.toggle('has-savings', totalSavedTokens > 0)
   }
 
-  // Tokens saved badge (when filtering active)
-  const tokensSavedBadge = document.getElementById('tokensSavedBadge')
-  if (tokensSavedBadge) {
-    if (state.activeProfile !== 'All Tools') {
-      let totalSaved = 0
-      for (const t of state.reqs) {
-        if (t.filteringActive && t.tokensSaved) totalSaved += t.tokensSaved
-      }
-      if (totalSaved > 0) {
-        tokensSavedBadge.style.display = 'inline'
-        tokensSavedBadge.textContent = `~${fmt(totalSaved)} saved`
-        tokensSavedBadge.title = 'Tokens saved by tool filtering this session'
-      } else {
-        tokensSavedBadge.style.display = 'none'
-      }
-    } else {
-      tokensSavedBadge.style.display = 'none'
-    }
-  }
-
-  // Daily cost
+  // Daily cost (persisted across eviction)
   const daily = getDailyCost()
   const dailyEl = document.getElementById('dailyCost')
   if (dailyEl) {
     if (daily > 0) {
-      dailyEl.style.display = 'block'
+      dailyEl.style.display = 'flex'
       dailyEl.textContent = `Today: ${fmtCost(daily)}`
     } else {
       dailyEl.style.display = 'none'
@@ -210,8 +190,7 @@ function getClaudeCommand() {
 }
 
 export function copyClaudeCommand() {
-  const cmd = getClaudeCommand()
-  navigator.clipboard.writeText(cmd).then(() => {
+  navigator.clipboard.writeText(getClaudeCommand()).then(() => {
     const btn = document.getElementById('copyCommandBtn')
     if (btn) {
       const orig = btn.textContent
@@ -226,7 +205,7 @@ export function renderReqList() {
   const el = document.getElementById('reqList')
   if (state.reqs.length === 0) {
     const cmd = getClaudeCommand()
-    el.innerHTML = `<div class="empty"><div class="empty-icon waiting">&#x1F50D;</div><h2>Waiting for requests...</h2><p>Start Claude Code with:<br><code id="claudeCommand" style="color:var(--cyan);font-size:11px">${cmd}</code> <button id="copyCommandBtn" class="copy-command-btn" onclick="copyClaudeCommand()" title="Copy to clipboard">Copy</button></p></div>`
+    el.innerHTML = `<div class="empty"><div class="empty-icon waiting">&#x1F50D;</div><h2>Waiting for requests...</h2><p>Start Claude Code with:<br><code style="color:var(--cyan);font-size:11px">${cmd}</code> <button id="copyCommandBtn" class="copy-command-btn" onclick="copyClaudeCommand()" title="Copy to clipboard">Copy</button></p></div>`
     return
   }
 
@@ -403,7 +382,7 @@ export function renderDetail() {
       html += `<div class="warning-box">`
       html += `<div class="warning-box-title">System prompt is large</div>`
       html += `<div class="usage-row"><span class="usage-label">System prompt</span><span class="usage-value" style="color:var(--orange)">${fmt(systemSeg.tokens)} tokens (${systemPct.toFixed(1)}% of context)</span></div>`
-      html += `<div style="margin-top:6px;font-size:10px;color:var(--text3)">Consider trimming or splitting to free context for conversation.</div>`
+      html += `<div style="margin-top:6px;font-size:10px;color:var(--text3)">Consider trimming to free context for conversation.</div>`
       html += `</div>`
     }
   }

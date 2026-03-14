@@ -93,9 +93,6 @@ export function connect() {
     }
 
     if (data.type === 'request') {
-      if (data.toolsUsed && data.toolsUsed.length) {
-        data.toolsUsed.forEach(name => state.toolsUsed.add(name))
-      }
       state.reqs.push(data)
       // Evict oldest requests to keep memory bounded
       if (state.reqs.length > MAX_REQS) {
@@ -143,7 +140,10 @@ export function connect() {
           req.actualCost = data.cost
           addDailyCost(data.cost.totalCost)
         }
-        if (data.toolsUsed) req.toolsUsed = data.toolsUsed
+        if (data.toolsUsed) {
+          req.toolsUsed = data.toolsUsed
+          data.toolsUsed.forEach(name => state.toolsUsed.add(name))
+        }
         // Only re-render detail if this update is for the selected request
         const isSelected = state.selectedReq !== null && state.reqs[state.selectedReq]?.turn === data.turn
         renderAll({ skipDetail: !isSelected })
