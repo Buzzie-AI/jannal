@@ -29,11 +29,12 @@ const RULES = [
   },
   {
     // URL + browser-review intent: user wants to view/inspect/test a webpage.
-    // Requires BOTH a URL and a specific browser-review verb to avoid matching
-    // API endpoints, GitHub links, or error URLs mentioned in code discussions.
+    // Requires BOTH a URL and a narrow browser-specific phrase.
+    // Deliberately excludes generic verbs (see, check, open this, demo, browse)
+    // which commonly appear in non-browser URL references (PRs, docs, APIs).
     patterns: [
-      /https?:\/\/\S+[\s\S]{0,200}\b(?:visit|navigate\s+to|browse|demo|experience|preview|landing\s*page|open\s+(?:this|it|the))\b/i,
-      /\b(?:visit|navigate\s+to|browse|demo|experience|preview|landing\s*page|open\s+(?:this|it|the))\b[\s\S]{0,200}https?:\/\/\S+/i,
+      /https?:\/\/\S+[\s\S]{0,200}\b(?:visit|navigate\s+to|preview|landing\s*page|open\s+in\s+(?:a\s+)?browser)\b/i,
+      /\b(?:visit|navigate\s+to|preview|landing\s*page|open\s+in\s+(?:a\s+)?browser)\b[\s\S]{0,200}https?:\/\/\S+/i,
     ],
     groups: ["playwright"],
     reason: "Keyword: URL + browser review",

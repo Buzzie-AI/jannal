@@ -6,13 +6,15 @@
 //
 // Run: node --test test/router-recall.test.js
 
-const { describe, it } = require("node:test");
+const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 const { matchRules } = require("../router/rules");
-const { selectIntentMessage } = require("../router/index");
+const { selectIntentMessage, routeRequest } = require("../router/index");
 const { getCatalogEntry } = require("../router/catalog");
+const { initDataDir } = require("../router/log");
 
-// Realistic candidate groups for a full Claude Code setup with MCP servers
+// ─── Shared fixtures ─────────────────────────────────────────────────────────
+
 const ALL_CATALOG_GROUPS = [
   "linear",
   "firebase",
@@ -21,35 +23,67 @@ const ALL_CATALOG_GROUPS = [
   "supabase",
 ];
 
+// Representative tool names from a real 170-tool Claude Code session.
+// Enough representatives per group to exceed min_tool_count (20) and
+// min_tool_tokens (5000) thresholds so routeRequest doesn't skip routing.
+const REALISTIC_TOOL_NAMES = [
+  // Core
+  "Agent", "Bash", "Read", "Write", "Edit", "Glob", "Grep",
+  "WebSearch", "WebFetch", "LSP", "EnterPlanMode", "ExitPlanMode",
+  "AskUserQuestion", "TaskCreate", "TaskUpdate", "TaskGet", "TaskList",
+  // Linear (catalog: mcp__claude_ai_linear__*)
+  "mcp__claude_ai_linear__list_issues",
+  "mcp__claude_ai_linear__get_issue",
+  "mcp__claude_ai_linear__save_issue",
+  "mcp__claude_ai_linear__list_teams",
+  "mcp__claude_ai_linear__list_projects",
+  // Firebase (catalog: mcp__plugin_firebase_firebase__*)
+  "mcp__plugin_firebase_firebase__firebase_get_project",
+  "mcp__plugin_firebase_firebase__firebase_init",
+  "mcp__plugin_firebase_firebase__firebase_get_environment",
+  // Playwright (catalog: mcp__plugin_playwright_playwright__*)
+  "mcp__plugin_playwright_playwright__browser_navigate",
+  "mcp__plugin_playwright_playwright__browser_snapshot",
+  "mcp__plugin_playwright_playwright__browser_click",
+  "mcp__plugin_playwright_playwright__browser_take_screenshot",
+  "mcp__plugin_playwright_playwright__browser_close",
+  // Context7 (catalog: mcp__plugin_context7_context7__*)
+  "mcp__plugin_context7_context7__resolve-library-id",
+  "mcp__plugin_context7_context7__query-docs",
+  // Supabase (catalog: mcp__supabase-production__*)
+  "mcp__supabase-production__execute_sql",
+  "mcp__supabase-production__list_tables",
+  "mcp__supabase-staging__execute_sql",
+  "mcp__supabase-staging__list_tables",
+  // Other (uncategorized)
+  "NotebookEdit", "NotebookRead", "Skill", "CronCreate",
+  "EnterWorktree", "ExitWorktree", "ListMcpResourcesTool",
+];
+
 /**
- * Simulate the group-selection logic from router/index.js.
- * This mirrors the merge + stripping path without requiring async embeddings.
+ * Build a stored metadata object suitable for routeRequest().
+ * Mirrors the shape created by server.js analyzeRequest() + reqStore.set().
  */
-function simulateGroupSelection(rulesResult, catalogGroups) {
-  let matchedBy, mergedGroups, confidence;
-
-  if (rulesResult) {
-    matchedBy = "rules";
-    mergedGroups = rulesResult.groups;
-    confidence = rulesResult.confidence;
-  } else {
-    matchedBy = "default_core_only";
-    mergedGroups = [];
-    confidence = 0;
-  }
-
-  const selectedGroups = new Set(mergedGroups);
-  selectedGroups.add("core");
-  selectedGroups.add("other"); // unknown groups always retained
-
-  const strippedGroups = catalogGroups.filter((g) => {
-    if (selectedGroups.has(g)) return false;
-    const entry = getCatalogEntry(g);
-    return entry && entry.stripEligible === true;
-  });
-
-  return { matchedBy, selectedGroups: [...selectedGroups], strippedGroups, confidence };
+function buildStored(userMessages) {
+  return {
+    toolNames: REALISTIC_TOOL_NAMES,
+    toolCount: REALISTIC_TOOL_NAMES.length,
+    estimatedToolTokens: 44000, // ~44k tokens, realistic for 170 tools
+    userMessages,
+    sessionHash: "test-session",
+    groupId: 0,
+    model: "claude-opus-4-6",
+    stream: true,
+  };
 }
+
+// ─── Test setup ──────────────────────────────────────────────────────────────
+
+// Initialize router state from disk (loads shadow mode config, core tools).
+// This is required for routeRequest() to work — it reads config via getConfig().
+before(() => {
+  initDataDir();
+});
 
 // ─── Intent Message Selection ────────────────────────────────────────────────
 
@@ -86,7 +120,7 @@ describe("selectIntentMessage", () => {
   });
 });
 
-// ─── Playwright Recall ───────────────────────────────────────────────────────
+// ─── Playwright Recall: Unit Tests ───────────────────────────────────────────
 //
 // Real failure from shadow telemetry:
 //   turns: 29, 30, 31, 32
@@ -97,13 +131,13 @@ describe("selectIntentMessage", () => {
 //     entire stuff here for people to see/experince. maybe we should link from
 //     the landing page of mobile app (as demo view - experince it)"
 
-describe("playwright recall: URL + browser-review intent", () => {
+describe("playwright recall: rules unit tests", () => {
   const REAL_INTENT =
     "yes.. see this https://demo.mercury.com/dashboard they have teh entire " +
     "stuff here for people to see/experince. maybe we should link from the " +
     "landing page of mobile app (as demo view - experince it)";
 
-  it("rules match playwright for URL + demo/experience intent", () => {
+  it("real telemetry message matches via 'landing page' + URL", () => {
     const result = matchRules(REAL_INTENT, ALL_CATALOG_GROUPS);
     assert.ok(result, "Rules should produce a match");
     assert.ok(
@@ -112,29 +146,15 @@ describe("playwright recall: URL + browser-review intent", () => {
     );
   });
 
-  it("group selection retains playwright, strips others", () => {
-    const rules = matchRules(REAL_INTENT, ALL_CATALOG_GROUPS);
-    const selection = simulateGroupSelection(rules, ALL_CATALOG_GROUPS);
-    assert.ok(
-      !selection.strippedGroups.includes("playwright"),
-      "playwright must NOT be stripped"
-    );
-    assert.ok(
-      selection.strippedGroups.length > 0,
-      "Other groups should still be stripped"
-    );
-  });
-
-  // Variations of the same intent pattern
-  it("matches URL + 'visit this site'", () => {
-    const msg = "visit this site https://app.example.com and check the layout";
+  // Positive: specific browser-review phrases + URL
+  it("matches URL + 'visit'", () => {
+    const msg = "visit https://app.example.com and check the layout";
     const result = matchRules(msg, ALL_CATALOG_GROUPS);
     assert.ok(result?.groups.includes("playwright"));
   });
 
-  it("matches URL + 'preview' intent", () => {
-    const msg =
-      "can you preview https://staging.myapp.com/onboarding and see if it works";
+  it("matches URL + 'preview'", () => {
+    const msg = "can you preview https://staging.myapp.com/onboarding";
     const result = matchRules(msg, ALL_CATALOG_GROUPS);
     assert.ok(result?.groups.includes("playwright"));
   });
@@ -145,147 +165,237 @@ describe("playwright recall: URL + browser-review intent", () => {
     assert.ok(result?.groups.includes("playwright"));
   });
 
-  it("matches URL + 'demo' intent", () => {
-    const msg =
-      "the demo is at https://demo.mercury.com/dashboard, check what they did";
-    const result = matchRules(msg, ALL_CATALOG_GROUPS);
-    assert.ok(result?.groups.includes("playwright"));
-  });
-
-  it("matches URL + 'landing page' mention", () => {
+  it("matches URL + 'landing page'", () => {
     const msg =
       "look at their landing page https://www.linear.app and see the design";
     const result = matchRules(msg, ALL_CATALOG_GROUPS);
     assert.ok(result?.groups.includes("playwright"));
   });
 
-  // Negative cases: URLs without browser-review intent
+  it("matches 'open in browser' + URL", () => {
+    const msg = "open in browser https://localhost:3000/dashboard";
+    const result = matchRules(msg, ALL_CATALOG_GROUPS);
+    assert.ok(result?.groups.includes("playwright"));
+  });
+
+  // Negative: URLs without browser-review intent — the precision boundary
   it("does NOT match URL in code/API context", () => {
     const msg =
       "the API endpoint is https://api.example.com/v1/users, fix the auth header";
-    const result = matchRules(msg, ALL_CATALOG_GROUPS);
-    // Should NOT match playwright (no browser-review intent)
-    const hasPlaywright = result?.groups.includes("playwright") || false;
+    const hasPlaywright =
+      matchRules(msg, ALL_CATALOG_GROUPS)?.groups.includes("playwright") ||
+      false;
     assert.equal(hasPlaywright, false, "API URL should not trigger playwright");
   });
 
   it("does NOT match URL in error message", () => {
     const msg =
       "getting 500 error from https://prod.myapp.com/api/webhook, check the logs";
-    const result = matchRules(msg, ALL_CATALOG_GROUPS);
-    const hasPlaywright = result?.groups.includes("playwright") || false;
-    assert.equal(
-      hasPlaywright,
-      false,
-      "Error investigation URL should not trigger playwright"
-    );
+    const hasPlaywright =
+      matchRules(msg, ALL_CATALOG_GROUPS)?.groups.includes("playwright") ||
+      false;
+    assert.equal(hasPlaywright, false);
   });
 
   it("does NOT match bare URL without action verb", () => {
     const msg = "the repo is at https://github.com/org/project";
-    const result = matchRules(msg, ALL_CATALOG_GROUPS);
-    const hasPlaywright = result?.groups.includes("playwright") || false;
+    const hasPlaywright =
+      matchRules(msg, ALL_CATALOG_GROUPS)?.groups.includes("playwright") ||
+      false;
+    assert.equal(hasPlaywright, false);
+  });
+
+  it("does NOT match 'open this' + docs URL", () => {
+    const msg = "open this https://react.dev/reference/react/useEffect";
+    const hasPlaywright =
+      matchRules(msg, ALL_CATALOG_GROUPS)?.groups.includes("playwright") ||
+      false;
+    assert.equal(hasPlaywright, false, "'open this' + docs URL is too generic");
+  });
+
+  it("does NOT match 'see this PR' link", () => {
+    const msg =
+      "see this PR https://github.com/org/repo/pull/123 for the context";
+    const hasPlaywright =
+      matchRules(msg, ALL_CATALOG_GROUPS)?.groups.includes("playwright") ||
+      false;
+    assert.equal(hasPlaywright, false, "PR link should not trigger playwright");
+  });
+
+  it("does NOT match 'check this Notion page'", () => {
+    const msg =
+      "check this Notion page https://notion.so/team/design-spec-abc123";
+    const hasPlaywright =
+      matchRules(msg, ALL_CATALOG_GROUPS)?.groups.includes("playwright") ||
+      false;
     assert.equal(
       hasPlaywright,
       false,
-      "Bare URL mention should not trigger playwright"
+      "Notion doc link should not trigger playwright"
+    );
+  });
+
+  it("does NOT match generic 'demo' + URL without browser phrase", () => {
+    const msg =
+      "the demo is at https://demo.example.com/dashboard, check what they did";
+    const hasPlaywright =
+      matchRules(msg, ALL_CATALOG_GROUPS)?.groups.includes("playwright") ||
+      false;
+    assert.equal(
+      hasPlaywright,
+      false,
+      "'demo' alone near URL is too generic"
+    );
+  });
+
+  it("does NOT match 'experience' + URL without browser phrase", () => {
+    const msg =
+      "experience the new onboarding at https://app.example.com/signup";
+    const hasPlaywright =
+      matchRules(msg, ALL_CATALOG_GROUPS)?.groups.includes("playwright") ||
+      false;
+    assert.equal(
+      hasPlaywright,
+      false,
+      "'experience' alone near URL is too generic"
     );
   });
 });
 
-// ─── Supabase Recall ─────────────────────────────────────────────────────────
-//
-// Real failures from shadow telemetry:
-//
-// Case 1 (embeddings, conf=0.577):
-//   stripped: supabase
-//   used: supabase-production__execute_sql ×3
-//   intent: "i think someone needs to see a demo client and then test and see
-//     actual client. do we have data showing that?"
-//
-// Case 2 (default_core_only):
-//   stripped: supabase
-//   used: supabase-production__execute_sql ×3
-//   intent: "improve your prmopt. ijprove your strategy, this looks like a
-//     high school kid strategy"
-//
-// These are documented as KNOWN LIMITATIONS of message-level routing.
-// The model's decision to use Supabase is not predictable from the user message.
+// ─── Playwright Recall: Integration via routeRequest() ───────────────────────
+
+describe("playwright recall: integration via routeRequest()", () => {
+  const REAL_INTENT =
+    "yes.. see this https://demo.mercury.com/dashboard they have teh entire " +
+    "stuff here for people to see/experince. maybe we should link from the " +
+    "landing page of mobile app (as demo view - experince it)";
+
+  it("routeRequest retains playwright for URL + landing page intent", async () => {
+    const result = await routeRequest({
+      stored: buildStored([REAL_INTENT]),
+      allToolNames: REALISTIC_TOOL_NAMES,
+    });
+    assert.ok(result.eligible, "Request should be eligible");
+    assert.ok(
+      !result.stripped_groups.includes("playwright"),
+      "playwright must NOT be in stripped_groups"
+    );
+    assert.ok(
+      result.selected_groups.includes("playwright"),
+      "playwright must be in selected_groups"
+    );
+    // Other specialized groups without signal should still be stripped
+    assert.ok(result.stripped_groups.length > 0, "Should still strip others");
+  });
+
+  it("routeRequest uses intent selection to skip boilerplate", async () => {
+    const result = await routeRequest({
+      stored: buildStored([
+        "visit https://staging.myapp.com and check the design",
+        "This session is being continued from a previous conversation.",
+      ]),
+      allToolNames: REALISTIC_TOOL_NAMES,
+    });
+    assert.ok(result.eligible);
+    // Intent selection should find the visit+URL message, not the boilerplate
+    assert.ok(
+      result.selected_groups.includes("playwright"),
+      "Should find playwright intent despite boilerplate being last message"
+    );
+  });
+});
+
+// ─── Supabase Recall: Known Limitation ───────────────────────────────────────
 
 describe("supabase recall: known limitation of message-level routing", () => {
   it("'do we have data showing that' does NOT match supabase rule (by design)", () => {
     const msg =
       "i think someone needs to see a demo client and then test and see actual client. do we have data showing that?";
-    const result = matchRules(msg, ALL_CATALOG_GROUPS);
-    const hasSupabase = result?.groups.includes("supabase") || false;
-    // This CORRECTLY does not match — "data" is too generic for a supabase rule.
-    // The model's choice to query Supabase was not inferable from the message.
-    assert.equal(
-      hasSupabase,
-      false,
-      "Generic 'data' mention should not trigger supabase"
-    );
+    const hasSupabase =
+      matchRules(msg, ALL_CATALOG_GROUPS)?.groups.includes("supabase") || false;
+    assert.equal(hasSupabase, false);
   });
 
   it("'improve your strategy' does NOT match supabase rule (by design)", () => {
     const msg =
       "improve your prmopt. ijprove your strategy, this looks like a high school kid strategy";
-    const result = matchRules(msg, ALL_CATALOG_GROUPS);
-    const hasSupabase = result?.groups.includes("supabase") || false;
-    assert.equal(
-      hasSupabase,
-      false,
-      "Unrelated feedback should not trigger supabase"
-    );
+    const hasSupabase =
+      matchRules(msg, ALL_CATALOG_GROUPS)?.groups.includes("supabase") || false;
+    assert.equal(hasSupabase, false);
   });
 
-  it("group selection strips supabase for generic messages", () => {
-    const msg = "improve the growth strategy and make it more compelling";
-    const rules = matchRules(msg, ALL_CATALOG_GROUPS);
-    const selection = simulateGroupSelection(rules, ALL_CATALOG_GROUPS);
-    assert.equal(selection.matchedBy, "default_core_only");
-    assert.ok(
-      selection.strippedGroups.includes("supabase"),
-      "supabase should be stripped for generic messages"
-    );
-  });
-
-  // Positive: explicit supabase mention still works
   it("explicit 'supabase' keyword retains supabase", () => {
-    const msg = "query supabase for the latest user signups";
-    const result = matchRules(msg, ALL_CATALOG_GROUPS);
+    const result = matchRules(
+      "query supabase for the latest user signups",
+      ALL_CATALOG_GROUPS
+    );
     assert.ok(result?.groups.includes("supabase"));
   });
 });
 
-// ─── Default Core Only Behavior ──────────────────────────────────────────────
+// ─── Default Core Only: Integration via routeRequest() ───────────────────────
 
-describe("default_core_only: no signal strips all specialized groups", () => {
-  it("generic message strips all catalog groups", () => {
-    const msg = "help me refactor this function to be more readable";
-    const rules = matchRules(msg, ALL_CATALOG_GROUPS);
-    const selection = simulateGroupSelection(rules, ALL_CATALOG_GROUPS);
-    assert.equal(selection.matchedBy, "default_core_only");
-    assert.deepEqual(
-      selection.strippedGroups.sort(),
-      ALL_CATALOG_GROUPS.sort(),
-      "All specialized groups should be stripped"
-    );
+describe("default_core_only: integration via routeRequest()", () => {
+  it("generic message strips all strip-eligible catalog groups", async () => {
+    const result = await routeRequest({
+      stored: buildStored([
+        "help me refactor this function to be more readable",
+      ]),
+      allToolNames: REALISTIC_TOOL_NAMES,
+    });
+    assert.ok(result.eligible);
+    assert.equal(result.matched_by, "default_core_only");
+    assert.equal(result.confidence, 0);
+    // All 5 catalog groups should be stripped
+    for (const g of ALL_CATALOG_GROUPS) {
+      assert.ok(
+        result.stripped_groups.includes(g),
+        `${g} should be stripped for generic message`
+      );
+    }
+    // Core and unknown groups retained
+    assert.ok(result.selected_groups.includes("core"));
   });
 
-  it("retains core and other groups", () => {
-    const msg = "what is the meaning of life";
-    const rules = matchRules(msg, ALL_CATALOG_GROUPS);
-    const selection = simulateGroupSelection(rules, ALL_CATALOG_GROUPS);
-    assert.ok(selection.selectedGroups.includes("core"));
-    assert.ok(selection.selectedGroups.includes("other"));
+  it("all-boilerplate messages produce default_core_only", async () => {
+    const result = await routeRequest({
+      stored: buildStored([
+        "This session is being continued from a previous conversation.",
+      ]),
+      allToolNames: REALISTIC_TOOL_NAMES,
+    });
+    assert.ok(result.eligible);
+    assert.equal(result.matched_by, "default_core_only");
+    assert.ok(result.estimated_tokens_saved > 0, "Should predict savings");
+  });
+
+  it("linear keyword retains linear via routeRequest", async () => {
+    const result = await routeRequest({
+      stored: buildStored(["create a linear ticket for the auth bug"]),
+      allToolNames: REALISTIC_TOOL_NAMES,
+    });
+    assert.ok(result.eligible);
+    assert.ok(result.selected_groups.includes("linear"));
+    assert.ok(!result.stripped_groups.includes("linear"));
+    // Other groups should be stripped
+    assert.ok(result.stripped_groups.includes("firebase"));
+    assert.ok(result.stripped_groups.includes("supabase"));
+  });
+
+  it("intent_message is included in result", async () => {
+    const result = await routeRequest({
+      stored: buildStored(["deploy to firebase hosting"]),
+      allToolNames: REALISTIC_TOOL_NAMES,
+    });
+    assert.ok(result.intent_message, "Result should include intent_message");
+    assert.ok(result.intent_message.includes("firebase"));
   });
 });
 
 // ─── Existing Rules Still Work ───────────────────────────────────────────────
 
 describe("existing rules: positive signal retains group", () => {
-  it("linear keyword retains linear", () => {
+  it("linear keyword", () => {
     const result = matchRules(
       "create a linear ticket for the auth bug",
       ALL_CATALOG_GROUPS
@@ -293,7 +403,7 @@ describe("existing rules: positive signal retains group", () => {
     assert.ok(result?.groups.includes("linear"));
   });
 
-  it("firebase keyword retains firebase", () => {
+  it("firebase keyword", () => {
     const result = matchRules(
       "deploy to firebase hosting",
       ALL_CATALOG_GROUPS
@@ -317,7 +427,7 @@ describe("existing rules: positive signal retains group", () => {
     assert.ok(result?.groups.includes("context7"));
   });
 
-  it("supabase keyword retains supabase", () => {
+  it("supabase keyword", () => {
     const result = matchRules("check supabase auth setup", ALL_CATALOG_GROUPS);
     assert.ok(result?.groups.includes("supabase"));
   });
