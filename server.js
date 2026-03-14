@@ -7,6 +7,13 @@ const path = require("path");
 const PORT = process.env.JANNAL_PORT || 4455;
 const ANTHROPIC_HOST = "api.anthropic.com";
 
+const {
+  estimateTokens,
+  getBudget,
+  inferBudget,
+  analyzeSegments,
+} = require("./lib/tokens");
+
 // ─── WebSocket clients ───────────────────────────────────────────────────────
 
 const wsClients = new Set();
@@ -16,48 +23,6 @@ function broadcast(data) {
   for (const client of wsClients) {
     if (client.readyState === 1) client.send(msg);
   }
-}
-
-// ─── Token estimation ────────────────────────────────────────────────────────
-
-function estimateTokens(input) {
-  if (!input) return 0;
-  const str = typeof input === "string" ? input : JSON.stringify(input);
-  return Math.ceil(str.length / 3.8);
-}
-
-// ─── Model budget lookup ─────────────────────────────────────────────────────
-
-const MODEL_BUDGETS = {
-  "gpt-4o": 128000, "gpt-4-turbo": 128000, "gpt-3.5": 16385,
-  "gemini": 1000000,
-};
-
-function getBudget(model) {
-  if (!model) return 200000;
-  const m = model.toLowerCase();
-
-  if (m.includes("1m")) return 1000000;
-  if (m.includes("opus-4-5") || m.includes("opus-4-6") || m.includes("opus-4.5") || m.includes("opus-4.6")) return 1000000;
-  if (m.includes("claude")) return 200000;
-
-  for (const [key, budget] of Object.entries(MODEL_BUDGETS)) {
-    if (m.includes(key)) return budget;
-  }
-  return 200000;
-}
-
-// If actual token usage exceeds the model's default budget,
-// snap up to the next known context tier (e.g. 200k → 1M).
-const CONTEXT_TIERS = [128000, 200000, 1000000];
-
-function inferBudget(model, tokenCount) {
-  const base = getBudget(model);
-  if (tokenCount <= base) return base;
-  for (const tier of CONTEXT_TIERS) {
-    if (tokenCount <= tier) return tier;
-  }
-  return Math.max(base, tokenCount);
 }
 
 // ─── Model pricing ($ per 1M tokens) ────────────────────────────────────────
