@@ -1,5 +1,6 @@
 import { state } from './state.js'
 import { getSegColor, getSegLabel, fmt, fmtCost, escapeHtml } from './utils.js'
+import { getDailyCost } from './session.js'
 
 // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,34 @@ export function renderStatus() {
     else if (t.estimatedCost) totalCost += t.estimatedCost.totalCost
   }
   document.getElementById('sessionCost').textContent = fmtCost(totalCost)
+
+  // Tokens saved badge (when filtering active)
+  const tokensSavedBadge = document.getElementById('tokensSavedBadge')
+  if (state.activeProfile !== 'All Tools') {
+    let totalSaved = 0
+    for (const t of state.reqs) {
+      if (t.filteringActive && t.tokensSaved) totalSaved += t.tokensSaved
+    }
+    if (totalSaved > 0) {
+      tokensSavedBadge.style.display = 'inline'
+      tokensSavedBadge.textContent = `~${fmt(totalSaved)} saved`
+      tokensSavedBadge.title = 'Tokens saved by tool filtering this session'
+    } else {
+      tokensSavedBadge.style.display = 'none'
+    }
+  } else {
+    tokensSavedBadge.style.display = 'none'
+  }
+
+  // Daily cost
+  const daily = getDailyCost()
+  const dailyEl = document.getElementById('dailyCost')
+  if (daily > 0) {
+    dailyEl.style.display = 'block'
+    dailyEl.textContent = `Today: ${fmtCost(daily)}`
+  } else {
+    dailyEl.style.display = 'none'
+  }
 }
 
 export function renderContextBar() {
@@ -135,10 +164,29 @@ export function renderTokenChart() {
   `
 }
 
+function getClaudeCommand() {
+  const port = location.port === '5173' ? '4455' : (location.port || '4455')
+  return `ANTHROPIC_BASE_URL=http://localhost:${port} claude`
+}
+
+export function copyClaudeCommand() {
+  const cmd = getClaudeCommand()
+  navigator.clipboard.writeText(cmd).then(() => {
+    const btn = document.getElementById('copyCommandBtn')
+    if (btn) {
+      const orig = btn.textContent
+      btn.textContent = 'Copied!'
+      btn.style.color = 'var(--green)'
+      setTimeout(() => { btn.textContent = orig; btn.style.color = '' }, 1500)
+    }
+  })
+}
+
 export function renderReqList() {
   const el = document.getElementById('reqList')
   if (state.reqs.length === 0) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon waiting">&#x1F50D;</div><h2>Waiting for requests...</h2><p>Start Claude Code with:<br><code style="color:var(--cyan);font-size:11px">ANTHROPIC_BASE_URL=http://localhost:4455 claude</code></p></div>'
+    const cmd = getClaudeCommand()
+    el.innerHTML = `<div class="empty"><div class="empty-icon waiting">&#x1F50D;</div><h2>Waiting for requests...</h2><p>Start Claude Code with:<br><code id="claudeCommand" style="color:var(--cyan);font-size:11px">${cmd}</code> <button id="copyCommandBtn" class="copy-command-btn" onclick="copyClaudeCommand()" title="Copy to clipboard">Copy</button></p></div>`
     return
   }
 
@@ -299,6 +347,19 @@ export function renderDetail() {
   meta.textContent = `${req.model} | ${req.segments.length} segments | ${req.messageCount} messages`
 
   let html = ''
+
+  // System prompt size warning
+  const systemSeg = req.segments?.find(s => s.type === 'system')
+  if (systemSeg && req.budget) {
+    const systemPct = (systemSeg.tokens / req.budget) * 100
+    if (systemPct > 15) {
+      html += `<div class="warning-box">`
+      html += `<div class="warning-box-title">System prompt is large</div>`
+      html += `<div class="usage-row"><span class="usage-label">System prompt</span><span class="usage-value" style="color:var(--orange)">${fmt(systemSeg.tokens)} tokens (${systemPct.toFixed(1)}% of context)</span></div>`
+      html += `<div style="margin-top:6px;font-size:10px;color:var(--text3)">Consider trimming or splitting to free context for conversation.</div>`
+      html += `</div>`
+    }
+  }
 
   // Filtering info
   if (req.filteringActive && req.removedTools && req.removedTools.length > 0) {

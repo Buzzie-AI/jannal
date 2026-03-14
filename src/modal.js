@@ -138,13 +138,14 @@ function renderToolsView(body) {
     else mcpGroups.push([serverName, serverTools])
   }
 
-  // Render a section of tool groups
+  // Render a section of tool groups (tools sorted by cost, highest first; never-used indicator)
   function renderSection(sectionGroups) {
     for (const [serverName, serverTools] of sectionGroups) {
       const displayName = serverName === 'other' ? 'Other' : serverName.charAt(0).toUpperCase() + serverName.slice(1)
-      const groupTokens = serverTools.reduce((s, t) => s + estimateToolTokens(t), 0)
-      const groupEnabled = serverTools.filter(t => isToolEnabled(t.name, profile, isAllTools)).length
-      const allEnabled = groupEnabled === serverTools.length
+      const sortedTools = [...serverTools].sort((a, b) => estimateToolTokens(b) - estimateToolTokens(a))
+      const groupTokens = sortedTools.reduce((s, t) => s + estimateToolTokens(t), 0)
+      const groupEnabled = sortedTools.filter(t => isToolEnabled(t.name, profile, isAllTools)).length
+      const allEnabled = groupEnabled === sortedTools.length
 
       html += `<div class="tool-group" data-server="${escapeHtml(serverName)}">`
       html += `<div class="tool-group-header">`
@@ -152,7 +153,7 @@ function renderToolsView(body) {
       html += `<span class="tool-group-chevron" onclick="toggleGroupAccordion('${escapeHtml(serverName)}')">&#9654;</span>`
       html += `<div class="tool-group-title" onclick="toggleGroupAccordion('${escapeHtml(serverName)}')">`
       html += `<span class="tool-group-name">${escapeHtml(displayName)}</span>`
-      html += `<span class="tool-group-meta">${groupEnabled}/${serverTools.length} tools · ~${fmt(groupTokens)} tok</span>`
+      html += `<span class="tool-group-meta">${groupEnabled}/${sortedTools.length} tools · ~${fmt(groupTokens)} tok</span>`
       html += `</div>`
       html += `<div class="tool-group-actions">`
       html += `<button class="btn-secondary" onclick="event.stopPropagation(); toggleGroupTools('${escapeHtml(serverName)}', true)" style="padding:2px 6px;font-size:9px">All</button>`
@@ -160,14 +161,15 @@ function renderToolsView(body) {
       html += `</div></div>`
       html += `<div class="tool-group-body collapsed">`
 
-      for (const tool of serverTools) {
+      for (const tool of sortedTools) {
         const enabled = isToolEnabled(tool.name, profile, isAllTools)
         const toolTokens = estimateToolTokens(tool)
         const desc = (tool.description || '').slice(0, 120)
+        const neverUsed = !state.toolsUsed?.has(tool.name)
         html += `<div class="tool-card" data-tool-name="${escapeHtml(tool.name)}">`
         html += `<input type="checkbox" data-tool="${escapeHtml(tool.name)}" data-server="${escapeHtml(serverName)}" ${enabled ? 'checked' : ''} onchange="onToolToggle()">`
         html += `<div class="tool-card-info">`
-        html += `<div class="tool-card-name">${escapeHtml(tool.name)}</div>`
+        html += `<div class="tool-card-name">${escapeHtml(tool.name)}${neverUsed ? ' <span class="never-used-tag" title="Not used this session">never used</span>' : ''}</div>`
         if (desc) html += `<div class="tool-card-desc">${escapeHtml(desc)}</div>`
         html += `</div>`
         html += `<div class="tool-card-tokens">~${fmt(toolTokens)} tok</div>`
@@ -192,10 +194,15 @@ function renderToolsView(body) {
   // Savings estimate
   html += `<div id="toolsSavings"></div>`
 
-  // Save as profile bar
+  // Save as profile bar + Quick profile from this turn
+  const req = state.reqs[state.selectedReq]
+  const toolsUsedThisTurn = req?.toolsUsed || []
   html += `<div class="save-profile-bar">`
   html += `<input type="text" id="profileNameInput" placeholder="Profile name..." value="">`
   html += `<button class="btn-primary" onclick="saveCurrentAsProfile()">Save as Profile</button>`
+  if (toolsUsedThisTurn.length > 0) {
+    html += `<button class="btn-secondary" onclick="createProfileFromThisTurn()" title="Create profile from tools used in this turn">From this turn</button>`
+  }
   html += `</div>`
 
   html += '</div>'
@@ -288,6 +295,23 @@ export function onToolToggle() {
   // Update header count
   const header = document.querySelector('.modal-tools-header-left')
   if (header) header.innerHTML = `<strong>${enabledCount}</strong> of <strong>${tools.length}</strong> tools enabled`
+}
+
+export async function createProfileFromThisTurn() {
+  const req = state.reqs[state.selectedReq]
+  const toolsUsed = req?.toolsUsed || []
+  if (toolsUsed.length === 0) return
+  const name = `Req ${req?.req ?? 0} tools`
+  const result = await saveProfile(name, 'allowlist', toolsUsed)
+  if (result.success) {
+    const bar = document.querySelector('.save-profile-bar')
+    if (bar) {
+      const origBg = bar.style.background
+      bar.style.background = 'rgba(16,185,129,0.1)'
+      bar.style.borderColor = 'rgba(16,185,129,0.3)'
+      setTimeout(() => { bar.style.background = origBg; bar.style.borderColor = '' }, 1500)
+    }
+  }
 }
 
 export async function saveCurrentAsProfile() {
