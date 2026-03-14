@@ -358,4 +358,4 @@ function getRouterConfig() {
   };
 }
 
-module.exports = { initRouter, routeRequest, getRouterStatus, getRouterConfig };
+module.exports = { initRouter, routeRequest, getRouterStatus, getRouterConfig, selectIntentMessage };

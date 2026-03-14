@@ -28,6 +28,17 @@ const RULES = [
     reason: "Keyword: browser automation",
   },
   {
+    // URL + browser-review intent: user wants to view/inspect/test a webpage.
+    // Requires BOTH a URL and a specific browser-review verb to avoid matching
+    // API endpoints, GitHub links, or error URLs mentioned in code discussions.
+    patterns: [
+      /https?:\/\/\S+[\s\S]{0,200}\b(?:visit|navigate\s+to|browse|demo|experience|preview|landing\s*page|open\s+(?:this|it|the))\b/i,
+      /\b(?:visit|navigate\s+to|browse|demo|experience|preview|landing\s*page|open\s+(?:this|it|the))\b[\s\S]{0,200}https?:\/\/\S+/i,
+    ],
+    groups: ["playwright"],
+    reason: "Keyword: URL + browser review",
+  },
+  {
     // "doc", "reference" removed — too generic, match JSDoc/code references
     patterns: [/\b(context7|documentation|library\s*docs?|look\s*up\s*docs?)\b/i],
     groups: ["context7"],

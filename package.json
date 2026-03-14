@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "electron": "electron .",
     "electron:build": "vite build && electron-builder --mac",
-    "electron:build:all": "vite build && electron-builder --mac --win --linux"
+    "electron:build:all": "vite build && electron-builder --mac --win --linux",
+    "test": "node --test test/"
   },
   "keywords": [
     "llm",
