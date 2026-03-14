@@ -152,7 +152,9 @@ const router = require("./router/index");
 let groupCounter = 0;
 let activeGroupId = null;
 let lastRequestTime = 0;
-let lastHumanText = null;
+let lastHumanText = null;      // most recent human text (detects new user messages)
+let lastFirstText = null;      // first human text in conversation (detects new conversations)
+let primarySessionHash = null; // tracks the canonical/main conversation session
 const GAP_THRESHOLD = 45000; // 45 seconds
 
 function simpleHash(str) {
@@ -163,9 +165,27 @@ function simpleHash(str) {
   return hash.toString(36);
 }
 
+/**
+ * Compute a stable session hash from the system prompt's text content.
+ * Ignores metadata (cache_control, TTLs, ephemeral flags) that changes
+ * per request and would destabilize the hash.
+ */
 function getSessionHash(body) {
   if (!body.system) return "no-system";
-  const text = typeof body.system === "string" ? body.system : JSON.stringify(body.system);
+  let text;
+  if (typeof body.system === "string") {
+    text = body.system.trim();
+  } else if (Array.isArray(body.system)) {
+    text = body.system
+      .filter((b) => b.type === "text" && b.text)
+      .map((b) => b.text.trim())
+      .join("\n")
+      .trim();
+  } else {
+    // Unknown structure — don't JSON.stringify (metadata instability)
+    return "no-system";
+  }
+  if (!text) return "no-system";
   return simpleHash(text.slice(0, 500));
 }
 
@@ -197,33 +217,59 @@ function extractLastHumanText(body) {
 }
 
 /**
- * Detect if a request is from the main Claude Code session (vs a subagent).
- * Main sessions have long system prompts (10k+ chars) and long conversation
- * histories. Subagents have short, focused prompts and few messages.
+ * Walk body.messages forwards to find the FIRST human-authored text.
+ * This is the original user prompt that started the conversation.
+ * It's rock-stable within a conversation (never changes) and only
+ * differs when a genuinely new conversation begins.
  */
-function isMainSession(body) {
-  const msgCount = (body.messages || []).length;
-  const sysLen = body.system
-    ? (typeof body.system === "string" ? body.system : JSON.stringify(body.system)).length
-    : 0;
-  return msgCount > 4 && sysLen > 2000;
+function extractFirstHumanText(body) {
+  if (!body.messages) return null;
+  for (let i = 0; i < body.messages.length; i++) {
+    const msg = body.messages[i];
+    if (msg.role !== "user") continue;
+    if (typeof msg.content === "string" && msg.content.trim()) {
+      return msg.content.slice(0, 200);
+    }
+    if (Array.isArray(msg.content)) {
+      const textParts = msg.content
+        .filter((b) => b.type === "text" && b.text)
+        .map((b) => b.text);
+      if (textParts.length === 0) continue;
+      let combined = textParts.join("\n");
+      combined = combined.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
+      if (combined.length > 0) return combined.slice(0, 200);
+    }
+  }
+  return null;
 }
 
 /**
  * Assign a group (turn) ID to a request.
  *
- * Heuristic: a new group starts when a main-session request contains
- * human-authored text that differs from the previous main-session text.
- * This detects "user typed a new message" without relying on time gaps.
- * Subagent requests and tool-result continuations stay in the current group.
+ * Two-signal heuristic for the primary session:
+ *   1. "First text" — the first human message in the conversation. Changes
+ *      only when a genuinely new conversation starts (new session, compaction,
+ *      different terminal). Catches new conversations sharing the same system
+ *      prompt / session hash.
+ *   2. "Last text" — the most recent human message. Changes when the user
+ *      types a new message within the same conversation. Catches consecutive
+ *      user turns within a single session.
+ *
+ * Non-primary session hashes (subagents) never create new groups.
  * Time gap (45s) remains as a fallback safety net.
+ *
+ * Residual edge case: if the first request after a gap is a subagent,
+ * primarySessionHash gets initialized wrong until the next gap reset.
  */
 function assignGroup(body) {
   const now = Date.now();
+  const sessionHash = getSessionHash(body);
 
-  // Fallback: time gap creates new group (safety net)
+  // Time gap: reset everything, establish primary session
   if (activeGroupId === null || (now - lastRequestTime) > GAP_THRESHOLD) {
+    primarySessionHash = sessionHash;
     lastHumanText = extractLastHumanText(body);
+    lastFirstText = extractFirstHumanText(body);
     activeGroupId = groupCounter++;
     lastRequestTime = now;
     return activeGroupId;
@@ -231,19 +277,32 @@ function assignGroup(body) {
 
   lastRequestTime = now;
 
-  // Only detect new turns from main session requests
-  if (isMainSession(body)) {
-    const currentText = extractLastHumanText(body);
-    if (currentText !== null && lastHumanText !== null && currentText !== lastHumanText) {
-      // Human typed a new message → new turn → new group
-      lastHumanText = currentText;
+  // Only the primary session can advance to a new group
+  if (sessionHash === primarySessionHash) {
+    const currentLastText = extractLastHumanText(body);
+    const currentFirstText = extractFirstHumanText(body);
+
+    // Signal 1: first human text changed → new conversation entirely
+    const firstTextChanged = currentFirstText !== null
+      && lastFirstText !== null
+      && currentFirstText !== lastFirstText;
+
+    // Signal 2: last human text changed → new user message in same conversation
+    const lastTextChanged = currentLastText !== null
+      && lastHumanText !== null
+      && currentLastText !== lastHumanText;
+
+    if (firstTextChanged || lastTextChanged) {
+      lastHumanText = currentLastText;
+      lastFirstText = currentFirstText;
       activeGroupId = groupCounter++;
-    } else if (currentText !== null) {
-      lastHumanText = currentText;
+    } else {
+      if (currentLastText !== null) lastHumanText = currentLastText;
+      if (currentFirstText !== null) lastFirstText = currentFirstText;
     }
   }
 
-  // Subagent requests and tool-result continuations stay in current group
+  // Non-primary sessions (subagents) stay in current group
   return activeGroupId;
 }
 
