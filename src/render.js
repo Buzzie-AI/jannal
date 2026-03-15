@@ -1,6 +1,6 @@
 import { state } from './state.js'
 import { getSegColor, getSegLabel, fmt, fmtCost, inputRate, escapeHtml } from './utils.js'
-import { getDailyCost, getDailySavings } from './session.js'
+import { getDailyCost, getDailySavings, getLifetimeCost, getLifetimeSavings } from './session.js'
 
 // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -31,10 +31,16 @@ export function renderStatus() {
   const reqBadge = document.getElementById('reqBadge')
   if (reqBadge) reqBadge.textContent = `Req ${state.reqs.length}`
 
-  // Daily metrics (persisted across eviction/reload/reconnect)
-  const dailyCost = getDailyCost()
+  // Cost + savings metrics (click to toggle lifetime / today)
+  const isLifetime = state.metricsScope === 'lifetime'
+  const scopeLabel = isLifetime ? '' : 'Today: '
+
+  const cost = isLifetime ? getLifetimeCost() : getDailyCost()
   const costEl = document.getElementById('dailyCost')
-  if (costEl) costEl.textContent = `Cost: ${fmtCost(dailyCost)}`
+  if (costEl) {
+    costEl.textContent = `${scopeLabel}${fmtCost(cost)}`
+    costEl.title = isLifetime ? 'Lifetime cost (click for today)' : 'Today\'s cost (click for lifetime)'
+  }
 
   const savedEl = document.getElementById('dailySaved')
   if (savedEl) {
@@ -43,12 +49,12 @@ export function renderStatus() {
       savedEl.className = 'daily-saved premium-locked'
       savedEl.title = 'Savings intelligence requires Pro'
     } else {
-      const { cost: savedCost, tokens: savedTokens } = getDailySavings()
+      const { cost: savedCost, tokens: savedTokens } = isLifetime ? getLifetimeSavings() : getDailySavings()
       const tokenStr = savedTokens > 0 ? ` (${fmt(savedTokens)})` : ''
-      savedEl.textContent = `Saved: ${fmtCost(savedCost)}${tokenStr}`
+      savedEl.textContent = `${scopeLabel}Saved ${fmtCost(savedCost)}${tokenStr}`
       savedEl.className = 'daily-saved'
       savedEl.classList.toggle('has-savings', savedCost > 0)
-      savedEl.title = 'Estimated daily savings from router intelligence'
+      savedEl.title = isLifetime ? 'Lifetime estimated savings (click for today)' : 'Today\'s estimated savings (click for lifetime)'
     }
   }
 

@@ -8,6 +8,7 @@ export const state = {
   activeProfile: 'All Tools',
   premium: false,      // set from server on connect
   routerMode: 'off',   // 'off' | 'shadow' | 'auto'
+  metricsScope: 'lifetime', // 'lifetime' | 'today' — toggled by clicking header badges
   toolsUsed: new Set(), // tools used across session (for "never used" indicator)
   groups: {},          // groupId → { id, reqIndices, sessions, startTime, endTime }
   groupView: true,     // true = grouped, false = flat list

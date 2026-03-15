@@ -110,6 +110,13 @@ export function getDailyCost() {
   } catch (e) { return 0 }
 }
 
+export function getLifetimeCost() {
+  try {
+    const data = JSON.parse(localStorage.getItem(DAILY_COSTS_KEY) || '{}')
+    return Object.values(data).reduce((sum, v) => sum + (v || 0), 0)
+  } catch (e) { return 0 }
+}
+
 export function addDailySavings(cost, tokens) {
   if ((!cost || cost <= 0) && (!tokens || tokens <= 0)) return
   try {
@@ -132,6 +139,18 @@ export function getDailySavings() {
     if (!entry) return { cost: 0, tokens: 0 }
     if (typeof entry === 'number') return { cost: entry, tokens: 0 }
     return { cost: entry.cost || 0, tokens: entry.tokens || 0 }
+  } catch (e) { return { cost: 0, tokens: 0 } }
+}
+
+export function getLifetimeSavings() {
+  try {
+    const data = JSON.parse(localStorage.getItem(DAILY_SAVINGS_KEY) || '{}')
+    let cost = 0, tokens = 0
+    for (const v of Object.values(data)) {
+      if (typeof v === 'number') { cost += v }
+      else if (v) { cost += v.cost || 0; tokens += v.tokens || 0 }
+    }
+    return { cost, tokens }
   } catch (e) { return { cost: 0, tokens: 0 } }
 }
 

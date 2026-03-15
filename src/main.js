@@ -161,6 +161,16 @@ document.addEventListener('click', (e) => {
   }
 })
 
+// ─── Header metrics toggle (lifetime / today) ──────────────────────────────
+
+function toggleMetricsScope() {
+  state.metricsScope = state.metricsScope === 'lifetime' ? 'today' : 'lifetime'
+  renderStatus()
+}
+
+document.getElementById('dailyCost')?.addEventListener('click', toggleMetricsScope)
+document.getElementById('dailySaved')?.addEventListener('click', toggleMetricsScope)
+
 // ─── Router mode popover ─────────────────────────────────────────────────────
 
 document.getElementById('routerBadge')?.addEventListener('click', (e) => {
