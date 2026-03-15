@@ -38,7 +38,7 @@ export function renderStatus() {
   const cost = isLifetime ? getLifetimeCost() : getDailyCost()
   const costEl = document.getElementById('dailyCost')
   if (costEl) {
-    costEl.textContent = `${scopeLabel}${fmtCost(cost)}`
+    costEl.textContent = `${scopeLabel}Cost: ${fmtCost(cost)}`
     costEl.title = isLifetime ? 'Lifetime cost (click for today)' : 'Today\'s cost (click for lifetime)'
   }
 
