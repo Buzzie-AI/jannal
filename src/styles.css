@@ -417,7 +417,7 @@ body {
 .group-children { overflow: hidden; }
 .group-children.collapsed { display: none; }
 .group-session-label {
-  padding: 4px 14px 2px;
+  padding: 4px 14px 2px; margin-left: 14px; padding-left: 26px;
   font-size: 9px; font-weight: 700; color: var(--text3);
   text-transform: uppercase; letter-spacing: 0.05em;
   display: flex; align-items: center; gap: 6px;
@@ -429,7 +429,8 @@ body {
 }
 .session-pill.main { background: rgba(167,139,250,0.15); color: var(--purple); }
 .session-pill.subagent { background: rgba(34,211,238,0.15); color: var(--cyan); }
-.group-children .req-card { padding-left: 20px; }
+.group-children .req-card { padding-left: 26px; border-left: 2px solid var(--overlay-6); margin-left: 14px; }
+.group-children .req-card.selected { border-left: 2px solid var(--amber); padding-left: 26px; }
 .group-time {
   font-size: 9px; color: var(--text3); padding: 2px 14px 8px;
   font-family: var(--font-mono);
@@ -461,8 +462,12 @@ body {
 .copy-command-btn { margin-left: 6px; padding: 2px 8px; font-size: 10px; border-radius: 4px; border: 1px solid var(--overlay-12); background: var(--overlay-4); color: var(--cyan); cursor: pointer; font-family: var(--font-ui); }
 .copy-command-btn:hover { background: rgba(34,211,238,0.12); border-color: rgba(34,211,238,0.25); }
 
+/* Stats grid */
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px 16px; }
+.stats-grid:empty { display: none; }
+
 /* Usage comparison */
-.usage-box { margin: 12px 16px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--bg2); border: 1px solid var(--border); }
+.usage-box { padding: 10px 12px; border-radius: var(--radius-md); background: var(--bg2); border: 1px solid var(--border); }
 .usage-row { display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 2px 0; }
 .usage-label { color: var(--text2); }
 .usage-value { font-weight: 700; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -470,15 +475,15 @@ body {
 .usage-value.estimated { color: var(--text2); }
 
 /* Filter info box */
-.filter-box { margin: 12px 16px; padding: 10px 12px; border-radius: var(--radius-md); background: rgba(251,146,60,0.06); border: 1px solid rgba(251,146,60,0.15); }
+.filter-box { padding: 10px 12px; border-radius: var(--radius-md); background: rgba(251,146,60,0.06); border: 1px solid rgba(251,146,60,0.15); }
 .filter-box-title { color: var(--orange); font-weight: 700; font-size: 11px; margin-bottom: 6px; }
 
 /* System prompt warning */
-.warning-box { margin: 12px 16px; padding: 10px 12px; border-radius: var(--radius-md); background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.15); }
+.warning-box { padding: 10px 12px; border-radius: var(--radius-md); background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.15); }
 .warning-box-title { color: var(--yellow); font-weight: 700; font-size: 11px; margin-bottom: 6px; }
 
 /* Router decision box */
-.router-box { margin: 12px 16px; padding: 10px 12px; border-radius: var(--radius-md); background: rgba(167,139,250,0.05); border: 1px solid rgba(167,139,250,0.15); }
+.router-box { padding: 10px 12px; border-radius: var(--radius-md); background: rgba(167,139,250,0.05); border: 1px solid rgba(167,139,250,0.15); }
 .router-box-title { color: var(--purple); font-weight: 700; font-size: 11px; margin-bottom: 6px; }
 .router-mode-shadow { color: var(--purple); }
 .router-mode-auto { color: var(--cyan); }
@@ -501,7 +506,7 @@ body {
 .modal-overlay.open { display: flex; }
 .modal {
   background: var(--bg2); border: 1px solid var(--overlay-8);
-  border-radius: var(--radius-xl); width: 100%; max-width: 900px; max-height: 85vh;
+  border-radius: var(--radius-xl); width: 100%; max-width: 900px; height: 85vh;
   display: flex; flex-direction: column; box-shadow: var(--shadow-xl);
   overflow: hidden;
   animation: modal-in var(--duration-normal) var(--ease-spring);
@@ -554,15 +559,16 @@ body {
   box-shadow: 0 0 0 3px rgba(96,165,250,0.1);
 }
 .modal-body {
-  flex: 1; overflow-y: auto; padding: 0;
+  flex: 1; overflow-y: auto; overflow-x: auto; padding: 0;
+  min-height: 0;
 }
 .modal-content {
-  padding: 16px 20px; font-family: var(--font-mono);
-  font-size: 12px; line-height: 1.7; color: var(--text); white-space: pre-wrap;
+  padding: 12px 20px; font-family: var(--font-mono);
+  font-size: 11px; line-height: 1.3; color: var(--text); white-space: pre-wrap;
   word-break: break-word; tab-size: 2;
 }
 .modal-content .line {
-  display: block; padding: 0 0 0 48px; position: relative; min-height: 20px;
+  display: block; padding: 1px 0 1px 48px; position: relative;
   border-left: 1px solid var(--overlay-4);
 }
 .modal-content .line:nth-child(even) { background: var(--overlay-1); }

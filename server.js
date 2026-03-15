@@ -449,15 +449,17 @@ function analyzeRequest(body) {
     const toolsJson = JSON.stringify(body.tools);
     const toolsSummary = body.tools.map((t) => t.name).join(", ");
 
+    const toolsFormatted = JSON.stringify(body.tools, null, 2);
     segments.push({
       type: "tools",
       name: `Tools (${body.tools.length})`,
       tokens: estimateTokens(toolsJson),
+      charLength: toolsFormatted.length,
       count: body.tools.length,
       toolNames: body.tools.map((t) => t.name),
       preview: toolsSummary.slice(0, 200),
     });
-    fullContents.push(JSON.stringify(body.tools, null, 2));
+    fullContents.push(toolsFormatted);
   }
 
   // Messages + extract tools used

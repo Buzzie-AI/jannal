@@ -53,6 +53,8 @@ export async function openModal(segIndex) {
     const data = await fetchContent(req.turn, segIndex)
     if (data.content) {
       modalState.fullContent = data.content
+      const charsEl = document.querySelector('.modal-stat:nth-child(2) .modal-stat-value')
+      if (charsEl) charsEl.textContent = data.content.length.toLocaleString()
       if (seg.type === 'tools') {
         try { modalState.parsedTools = JSON.parse(data.content) } catch (e) { modalState.parsedTools = null }
       }
@@ -98,11 +100,18 @@ export function renderModalContent() {
     return
   }
 
-  // Formatted view — with line numbers
-  const lines = content.split('\n')
+  // Formatted view — pretty-print JSON if possible, then add line numbers
+  let displayContent = content
+  try {
+    const parsed = JSON.parse(content)
+    displayContent = JSON.stringify(parsed, null, 2)
+  } catch (e) {
+    // Not JSON, use as-is
+  }
+  const lines = displayContent.split('\n')
   let html = '<div class="modal-content">'
   for (let i = 0; i < lines.length; i++) {
-    html += `<span class="line"><span class="line-num">${i + 1}</span>${escapeHtml(lines[i])}</span>\n`
+    html += `<span class="line"><span class="line-num">${i + 1}</span>${escapeHtml(lines[i])}</span>`
   }
   html += '</div>'
   body.innerHTML = html
@@ -378,7 +387,8 @@ export function filterModalContent() {
     return
   }
 
-  const content = modalState.fullContent
+  let content = modalState.fullContent
+  try { content = JSON.stringify(JSON.parse(content), null, 2) } catch (e) {}
   const lines = content.split('\n')
   let html = '<div class="modal-content">'
   for (let i = 0; i < lines.length; i++) {
@@ -388,9 +398,9 @@ export function filterModalContent() {
       const before = escapeHtml(line.slice(0, idx))
       const match = escapeHtml(line.slice(idx, idx + query.length))
       const after = escapeHtml(line.slice(idx + query.length))
-      html += `<span class="line"><span class="line-num">${i + 1}</span>${before}<span class="highlight">${match}</span>${after}</span>\n`
+      html += `<span class="line"><span class="line-num">${i + 1}</span>${before}<span class="highlight">${match}</span>${after}</span>`
     } else {
-      html += `<span class="line" style="opacity:0.25"><span class="line-num">${i + 1}</span>${escapeHtml(line)}</span>\n`
+      html += `<span class="line" style="opacity:0.25"><span class="line-num">${i + 1}</span>${escapeHtml(line)}</span>`
     }
   }
   html += '</div>'

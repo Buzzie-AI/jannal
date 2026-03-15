@@ -373,6 +373,9 @@ export function renderDetail() {
 
   let html = ''
 
+  // Stats grid — compact multi-column layout for stat cards
+  html += `<div class="stats-grid">`
+
   // System prompt size warning
   const systemSeg = req.segments?.find(s => s.type === 'system')
   if (systemSeg && req.budget) {
@@ -493,6 +496,8 @@ export function renderDetail() {
     }
     html += `</div>`
   }
+
+  html += `</div>` // close stats-grid
 
   // Segments — each row is clickable to open modal
   for (let i = 0; i < req.segments.length; i++) {
