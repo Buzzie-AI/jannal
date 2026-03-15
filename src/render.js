@@ -33,7 +33,7 @@ export function renderStatus() {
 
   // Cost + savings metrics (click to toggle lifetime / today)
   const isLifetime = state.metricsScope === 'lifetime'
-  const scopeLabel = isLifetime ? '' : 'Today: '
+  const scopeLabel = isLifetime ? 'Lifetime: ' : 'Today: '
 
   const cost = isLifetime ? getLifetimeCost() : getDailyCost()
   const costEl = document.getElementById('dailyCost')
