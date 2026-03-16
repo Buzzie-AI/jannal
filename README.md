@@ -21,6 +21,12 @@ Works with Claude Code and any tool that speaks the Anthropic Messages API. [Cur
 ## Quick start
 
 ```bash
+npx jannal
+```
+
+Or install and run manually:
+
+```bash
 git clone https://github.com/Buzzie-AI/jannal.git
 cd jannal
 npm install
@@ -92,95 +98,33 @@ When you use Claude Code, a single user message can generate dozens of API reque
 
 Toggle between **Grouped** and **Flat** views using the button in the request panel header.
 
-## Intent-aware tool router
+## Plugin system
 
-If you run Claude Code with many MCP servers (Linear, Firebase, Playwright, Supabase, Context7, etc.), every request carries 100-170 tool definitions — roughly 40-50k tokens of tool overhead. Most requests only need a few of those servers. The router predicts which server groups are relevant and identifies which ones could be safely removed.
+Jannal has a plugin system for extending its functionality. Plugins can hook into server lifecycle events, add custom API routes, analyze requests, and process responses.
 
-### How it works
+```js
+const { createServer } = require("jannal");
 
-The router runs two signal matchers in parallel on every eligible request:
+createServer({
+  plugins: [myPlugin()]
+}).start();
+```
 
-1. **Keyword rules** — Fast regex patterns for obvious intent: mentions of "linear", "firebase", "screenshot", URLs with browser-review phrases, etc. Confidence: 0.85.
-2. **Embedding similarity** — A local sentence embedding model (`BAAI/bge-small-en-v1.5`, 33MB) computes cosine similarity between the user's message and each server group's description. Groups scoring above 0.55 are matched.
+See `lib/plugins.js` for the available hooks: `onInit`, `onServerStart`, `onRoute`, `onRequestAnalyzed`, `onResponseComplete`, `getConnectPayload`.
 
-Signals are merged (intersection when both agree, rules-only when they disagree) and the result determines which groups to keep vs. strip.
+## Jannal Pro
 
-### Modes
+**[Jannal Pro](https://github.com/Buzzie-AI/jannal-pro)** adds premium features on top of the free core:
 
-| Mode | Behavior |
-|---|---|
-| **Off** | Router disabled. All tools forwarded as-is. |
-| **Shadow** | Router predicts which groups to keep/strip but **forwards all tools unchanged**. Predictions are logged for evaluation. This is the current default. |
-| **Auto** | *(Not yet enabled)* Router actually strips tools from the forwarded request. Gated on miss rate < 2% in shadow data. |
-
-Switch modes from the router badge in the header bar.
-
-### Group taxonomy
-
-Tools are classified into groups:
-
-- **Core** — Always retained. Built-in Claude Code tools: Agent, Bash, Read, Write, Edit, Glob, Grep, WebSearch, WebFetch, LSP, etc.
-- **Catalog groups** — Known MCP servers with descriptions and examples. Currently: Linear, Firebase, Playwright, Context7, Supabase. Each is marked `stripEligible` — safe to exclude when there's no positive signal.
-- **Unknown MCP groups** — MCP servers without catalog entries. Always retained (no basis to exclude them).
-- **Other** — Uncategorized non-core tools. Always retained.
-
-When neither rules nor embeddings detect a specialized group's relevance, the router defaults to **`default_core_only`**: strip all strip-eligible catalog groups, keep everything else. This is the inverted-polarity default — the router saves tokens by default rather than only when it's confident.
-
-### What you see in the UI
-
-Each request's detail panel shows the router decision:
-- **Would keep** / **Would strip** — which groups the router predicts are needed vs. removable (shadow mode language)
-- **Potential savings** — estimated token reduction if stripping were active
-- **Matched by** — `rules`, `embeddings`, `hybrid`, or `default_core_only`
-- **Confidence** — signal strength (0% = no signal, 85% = keyword match)
-
-The header shows **Saved ~Nk ($X.XX)** — cumulative estimated token savings across the session.
-
-### Monitoring and evaluation
-
-Shadow mode logs every routing decision to `data/router-evals.ndjson`. Each event records:
-- What the router predicted (selected/stripped groups)
-- What the model actually used (tool names from the response)
-- Whether stripping would have caused a miss (`would_have_missed`)
-
-Aggregate metrics are recomputed every 20 events into `data/router-metrics.json`. Key metrics: eligible rate, miss rate, median token savings, per-group precision/recall.
-
-**Guardrails before auto mode:**
-- `would_have_missed` rate must stay ≤ 2%
-- No misses on core workflows
-- Median token reduction ≥ 50% on eligible requests
-
-### Embedding model setup
-
-The router uses a local embedding model for semantic matching. It downloads and caches automatically on first start.
-
-- **Model:** `BAAI/bge-small-en-v1.5` (33MB, MIT license, 384-dim)
-- **Cache location:** `data/models-cache/`
-- **First startup:** The model downloads from HuggingFace (~30 seconds on a typical connection). You'll see `[embeddings] Loading model...` in the server logs. The proxy is fully functional while the model loads — it falls back to rules-only routing until embeddings are ready.
-- **Subsequent startups:** Model loads from local cache (~2-3 seconds).
-- **No GPU required.** Inference runs on CPU using `@huggingface/transformers` with fp32 precision. Each ranking call takes <200ms.
-
-If the model fails to load (network issues, disk space), the router continues with keyword rules only. No action required — it degrades gracefully.
-
-### Known limitations
-
-- **Unpredictable tool choices are not catchable.** When the user says "improve your strategy" and the model autonomously decides to query Supabase, no amount of keyword or embedding tuning can predict that from the message alone. This miss class needs session-aware retention (keeping recently-used tools warm), which is planned for a future iteration.
-- **Shadow mode has zero performance impact on requests.** All tools are always forwarded. The router only records what it *would have done*.
-
-See `docs/router/learnings.md` for detailed field notes from the development process.
+- **Router intelligence** — Predicts which MCP tool groups are relevant per request and identifies which can be safely stripped, saving 30-50k tokens per turn
+- **Electron Mac app** — Menu bar tray app with profile switching, auto-updates
+- **Embedding-based routing** — Local sentence embedding model for semantic intent matching
 
 ## Cursor support
 
 **Current status:** Cursor IDE does not yet support overriding the Anthropic base URL. Unlike OpenAI models (which have a base URL override in Settings → Models), Anthropic models always send requests directly to `api.anthropic.com`, so Jannal cannot intercept them today.
 
-**When Cursor adds Anthropic base URL override**, Jannal will work with zero code changes. You would:
-
-1. Start Jannal: `npm start`
-2. In Cursor Settings → Models, enable "Override Anthropic Base URL" (when available)
-3. Set the base URL to `http://localhost:4455`
-4. Open `http://localhost:4455` in your browser to use the Inspector
-
-**If Cursor's requests originate from cloud infrastructure** (and cannot reach localhost), you would need to expose Jannal via a tunnel (e.g. [ngrok](https://ngrok.com), [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/), or [Tailscale Funnel](https://tailscale.com/kb/1243/funnel/)) and use that public URL as the override.
+**When Cursor adds Anthropic base URL override**, Jannal will work with zero code changes.
 
 Track Cursor's progress on this feature: [Override Anthropic Base URL](https://forum.cursor.com/t/override-anthropic-base-url/5355).
 
@@ -206,15 +150,11 @@ Open `http://localhost:5173` for the dev UI (auto-proxies API calls to the serve
 
 ```
 jannal/
-├── server.js              # Proxy server, token analysis, grouping, profile management
-├── vite.config.js         # Vite build + dev proxy config
-├── router/                # Intent-aware tool router (shadow mode)
-│   ├── index.js           # routeRequest() orchestrator, signal merging, intent selection
-│   ├── catalog.js         # Server group catalog (descriptions, prefixes, stripEligible)
-│   ├── grouping.js        # Canonical tool-to-group classification
-│   ├── rules.js           # Keyword/regex pattern matcher
-│   ├── embeddings.js      # Local embedding model (bge-small-en-v1.5) + cosine ranking
-│   └── log.js             # Telemetry writer, state management, metrics rollup
+├── server.js              # Proxy server, createServer() factory, plugin hooks
+├── bin/jannal.js           # CLI entry point (npx jannal)
+├── lib/
+│   ├── plugins.js         # Plugin host (lifecycle hooks, route handling)
+│   └── tokens.js          # Token estimation, budget inference
 ├── src/                   # Frontend source (ES modules)
 │   ├── index.html         # HTML shell
 │   ├── main.js            # Entry point
@@ -227,26 +167,20 @@ jannal/
 │   ├── profiles.js        # Profile management
 │   ├── session.js         # Session export & persistence
 │   └── utils.js           # Formatting + segment helpers + tool grouping
-├── test/                  # Regression tests (node:test)
-│   └── router-recall.test.js  # Router recall tests from real shadow-mode failures
-├── data/                  # Auto-created at runtime
-│   ├── router-evals.ndjson    # Shadow-mode eval events (append-only)
-│   ├── router-metrics.json    # Aggregate metrics (recomputed every 20 events)
-│   ├── router-state.json      # Router config and runtime state
-│   └── models-cache/          # Cached embedding model (~128MB after download)
-├── docs/router/           # Router design docs and field notes
+├── test/
+│   └── session-hash.test.js  # Session hash stability tests
 ├── public/                # Vite build output (served by server.js)
+├── vite.config.js
 ├── package.json
-├── profiles.json          # Auto-created, stores your filtering profiles
-└── README.md
+└── profiles.json          # Auto-created, stores your filtering profiles
 ```
 
-The backend is `server.js` plus the `router/` module. The frontend is split into focused modules — no framework, just vanilla JS with ES module imports. Vite handles the build.
+The backend is `server.js` with a plugin system. The frontend is split into focused modules — no framework, just vanilla JS with ES module imports. Vite handles the build.
 
 ## Limitations
 
 - Only supports the Anthropic Messages API (not OpenAI, Google, etc. — yet)
-- Cursor IDE is not yet supported — Cursor lacks an Anthropic base URL override setting (see [Cursor support](#cursor-support))
+- Cursor IDE is not yet supported (see [Cursor support](#cursor-support))
 - Per-segment token counts are proportionally scaled estimates, not exact per-field counts
 - Tool filtering modifies the request body, which means Claude won't know those tools exist — this is the point, but be aware
 - Profiles are stored in a local JSON file, not synced across machines
