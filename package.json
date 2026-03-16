@@ -1,0 +1,52 @@
+{
+  "name": "jannal",
+  "version": "0.3.0",
+  "description": "Intercept, visualize, and optimize LLM context windows. Proxy that sits between your AI tools and the Anthropic API.",
+  "main": "server.js",
+  "exports": {
+    ".": "./server.js"
+  },
+  "bin": {
+    "jannal": "./bin/jannal.js"
+  },
+  "files": [
+    "bin/",
+    "server.js",
+    "lib/",
+    "public/",
+    "profiles.json"
+  ],
+  "scripts": {
+    "dev:server": "node server.js",
+    "dev:ui": "vite",
+    "build": "vite build",
+    "start": "node server.js",
+    "preview": "vite preview",
+    "test": "node --test test/session-hash.test.js"
+  },
+  "keywords": [
+    "llm",
+    "context-window",
+    "proxy",
+    "anthropic",
+    "claude",
+    "token-optimization",
+    "inspector",
+    "developer-tools"
+  ],
+  "author": "Arvind Naidu",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Buzzie-AI/jannal"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "vite": "^8.0.0"
+  }
+}

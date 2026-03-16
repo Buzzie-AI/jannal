@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jannal</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>(function(){var t=localStorage.getItem('jannal_theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')})()</script>
+</head>
+<body>
+<div class="noise-overlay" aria-hidden="true"></div>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <img class="logo" src="/logo.png" alt="Jannal">
+    <div class="header-brand">
+      <h1>Jannal</h1>
+      <div class="status">
+        <div class="status-dot disconnected" id="statusDot"></div>
+        <span id="statusText" style="color:var(--text3)">Connecting...</span>
+      </div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="global-search-wrapper">
+      <input class="global-search" type="text" placeholder="Search requests..." id="globalSearch" />
+      <div class="global-search-results" id="globalSearchResults"></div>
+    </div>
+    <div class="hdr-sep"></div>
+    <select class="profile-select" id="profileSelect">
+      <option value="All Tools">All Tools</option>
+    </select>
+    <span class="filter-badge" id="filterBadge" style="display:none">FILTERING</span>
+    <div class="router-badge-wrapper">
+      <span class="router-badge" id="routerBadge"></span>
+      <div class="router-popover" id="routerPopover">
+        <div class="router-popover-title">Router Mode</div>
+        <button class="router-popover-opt" data-mode="off"><span class="router-opt-dot router-opt-dot--off"></span>Off<span class="router-opt-desc">Router disabled</span></button>
+        <button class="router-popover-opt" data-mode="shadow"><span class="router-opt-dot router-opt-dot--shadow"></span>Shadow<span class="router-opt-desc">Observe only, no filtering</span></button>
+        <button class="router-popover-opt" data-mode="auto"><span class="router-opt-dot router-opt-dot--auto"></span>Auto<span class="router-opt-desc">Route and filter tools</span></button>
+      </div>
+    </div>
+    <div class="hdr-sep"></div>
+    <div class="daily-saved" id="dailySaved" title="Estimated daily savings from router intelligence">Saved: $0.00</div>
+    <div class="daily-cost" id="dailyCost" title="Total cost today">Cost: $0.00</div>
+    <button class="theme-toggle" id="themeToggle" title="Toggle dark/light mode" aria-label="Toggle theme">
+      <svg id="themeIconMoon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg id="themeIconSun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- Context Bar -->
+<div class="bar-container">
+  <div class="bar-outer" id="barOuter">
+    <div class="bar-inner" id="barInner"></div>
+    <div class="bar-marker" style="left:80%"><span>80%</span></div>
+    <div class="bar-marker" style="left:95%"><span>95%</span></div>
+  </div>
+  <div class="bar-stats">
+    <div class="bar-legend" id="barLegend"></div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="bar-total" id="barTotal">0 / 0</span>
+      <span class="bar-pct" id="barPct">0%</span>
+    </div>
+  </div>
+  <div class="token-chart-container" id="tokenChartContainer">
+    <div class="token-chart-label">Token growth</div>
+    <div class="token-chart" id="tokenChart"></div>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <div class="panel reqs-panel">
+    <div class="panel-header">
+      <span>Requests</span>
+      <div class="panel-actions">
+        <button id="viewToggleBtn" class="panel-btn view-toggle active" title="Toggle grouped/flat view">Grouped</button>
+        <div class="export-dropdown">
+          <button id="exportBtn" class="panel-btn" title="Export session">Export</button>
+          <div id="exportMenu" class="export-menu">
+            <button class="export-option" data-format="json">JSON</button>
+            <button class="export-option" data-format="csv">CSV</button>
+          </div>
+        </div>
+        <button id="clearBtn" class="panel-btn">Clear</button>
+      </div>
+    </div>
+    <div class="panel-body" id="reqList">
+      <div class="empty">
+        <div class="empty-icon waiting">&#x1F50D;</div>
+        <h2>Waiting for requests...</h2>
+        <p>Start Claude Code with:<br><code style="color:var(--cyan);font-size:11px">ANTHROPIC_BASE_URL=http://localhost:4455 claude</code></p>
+      </div>
+    </div>
+  </div>
+  <div class="panel detail-panel">
+    <div class="panel-header">
+      <span id="detailTitle">Segment Breakdown</span>
+      <span id="detailMeta" style="font-weight:400;text-transform:none;font-size:10px;color:var(--text3)"></span>
+    </div>
+    <div class="panel-body" id="detailBody">
+      <div class="empty">
+        <div class="empty-icon">&#x1F4CA;</div>
+        <h2>No request selected</h2>
+        <p>When requests flow through the proxy, each request will appear on the left. Click one to see the full context breakdown.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <div class="modal-color-bar" id="modalColorBar"></div>
+      <div class="modal-title">
+        <h2 id="modalTitle"></h2>
+        <div class="modal-meta" id="modalMeta"></div>
+      </div>
+      <div class="modal-stats" id="modalStats"></div>
+      <button class="modal-close" id="modalCloseBtn">&times;</button>
+    </div>
+    <div class="modal-toolbar" id="modalToolbar">
+      <button class="active" id="formattedBtn">Formatted</button>
+      <button id="rawBtn">Raw</button>
+      <button id="toolsViewBtn" style="display:none">Tools</button>
+      <div class="spacer"></div>
+      <input class="search-box" type="text" placeholder="Search content..." id="modalSearch" />
+      <button id="copyBtn">Copy</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script type="module" src="./main.js"></script>
+</body>
+</html>
