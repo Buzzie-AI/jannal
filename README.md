@@ -151,7 +151,7 @@ Open `http://localhost:5173` for the dev UI (auto-proxies API calls to the serve
 ```
 jannal/
 ├── server.js              # Proxy server, createServer() factory, plugin hooks
-├── bin/jannal.js           # CLI entry point (npx jannal)
+├── bin/jannal.js           # CLI entry point (npx @buzzie-ai/jannal)
 ├── lib/
 │   ├── plugins.js         # Plugin host (lifecycle hooks, route handling)
 │   └── tokens.js          # Token estimation, budget inference
