@@ -21,7 +21,7 @@ Works with Claude Code and any tool that speaks the Anthropic Messages API. [Cur
 ## Quick start
 
 ```bash
-npx jannal
+npx @buzzie-ai/jannal
 ```
 
 Or install and run manually:
