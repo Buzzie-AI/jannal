@@ -1,5 +1,7 @@
 # Jannal
 
+**/jun-nul/** — Tamil for "window". Because that's what it inspects.
+
 **See what's eating your context window. Then fix it.**
 
 Jannal sits between your AI tools and the Anthropic API. It intercepts every request, visualizes how your context window is being used, and lets you filter out tools you don't need — saving tokens and money.
