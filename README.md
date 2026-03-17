@@ -10,6 +10,8 @@ Works with Claude Code and any tool that speaks the Anthropic Messages API. [Cur
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
+[![Watch the demo](docs/jannal-demo.gif)](https://youtu.be/AI1q4yKAxV8)
+
 ![Jannal Screenshot](src/public/jannal-1.png)
 
 ## What it does
