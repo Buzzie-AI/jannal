@@ -10,18 +10,6 @@ Works with Claude Code and any tool that speaks the Anthropic Messages API. [Cur
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-[![Watch the demo](docs/jannal-demo.gif)](https://youtu.be/AI1q4yKAxV8)
-
-![Jannal Screenshot](src/public/jannal-1.png)
-
-## What it does
-
-**Inspect** — Watch every API request in real time. See exactly how many tokens go to the system prompt, tool definitions, conversation history, and tool results. The context bar shows you at a glance where your tokens are going.
-
-**Cost tracking** — See the cost of every turn, with per-model pricing (Opus, Sonnet, Haiku). Session cost accumulates in the header so you always know what you're spending. Uses the official `count_tokens` API for accurate counts before the response even finishes.
-
-**Filter tools** — The killer feature. If you're running Claude Code with 40+ MCP tools defined, half of them are probably irrelevant to what you're doing right now. Jannal strips them from the request before it hits the API. Create named profiles ("Coding Only", "Browser Automation") and switch between them from the UI.
-
 ## Quick start
 
 ```bash
@@ -49,6 +37,16 @@ ANTHROPIC_BASE_URL=http://localhost:4455 your-tool
 ```
 
 Open `http://localhost:4455` in your browser to see the Inspector.
+
+[![Watch the demo](docs/jannal-demo.gif)](https://youtu.be/AI1q4yKAxV8)
+
+## What it does
+
+**Inspect** — Watch every API request in real time. See exactly how many tokens go to the system prompt, tool definitions, conversation history, and tool results. The context bar shows you at a glance where your tokens are going.
+
+**Cost tracking** — See the cost of every turn, with per-model pricing (Opus, Sonnet, Haiku). Session cost accumulates in the header so you always know what you're spending. Uses the official `count_tokens` API for accurate counts before the response even finishes.
+
+**Filter tools** — The killer feature. If you're running Claude Code with 40+ MCP tools defined, half of them are probably irrelevant to what you're doing right now. Jannal strips them from the request before it hits the API. Create named profiles ("Coding Only", "Browser Automation") and switch between them from the UI.
 
 ## How it works
 
