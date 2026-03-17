@@ -1,6 +1,6 @@
 # Jannal
 
-**/jun-nul/** — Tamil for "window". Because that's what it inspects.
+**/jun-nul/** — Tamil for "window".
 
 **See what's eating your context window. Then fix it.**
 
