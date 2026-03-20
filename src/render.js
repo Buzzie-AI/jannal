@@ -116,13 +116,15 @@ export function renderContextBar() {
   }
   const zoomed = zoomScale > 1
 
-  // Group consecutive segments of the same type to avoid overflow with many small segments
+  // Group consecutive segments of the same color, but only merge tiny ones (< 0.3% of bar)
+  // so that each visible segment remains individually clickable with correct token count
   const groups = []
   for (let i = 0; i < req.segments.length; i++) {
     const seg = req.segments[i]
     const color = getSegColor(seg)
+    const rawW = (seg.tokens / budget) * 100 * zoomScale
     const last = groups[groups.length - 1]
-    if (last && last.color === color) {
+    if (last && last.color === color && rawW < 0.3) {
       last.tokens += seg.tokens
       last.count++
       last.endIndex = i
