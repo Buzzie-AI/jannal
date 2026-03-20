@@ -17,6 +17,7 @@
     "profiles.json"
   ],
   "scripts": {
+    "dev": "vite",
     "dev:server": "node server.js",
     "dev:ui": "vite",
     "build": "vite build",

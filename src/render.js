@@ -103,6 +103,19 @@ export function renderContextBar() {
   const fillPct = (total / budget) * 100
   barOuter.className = 'bar-outer' + (fillPct > 95 ? ' pressure-critical' : fillPct > 80 ? ' pressure-high' : '')
 
+  // Auto-zoom: when fill% is low, scale colored segments up so they're readable
+  const ZOOM_THRESHOLD = 30
+  const ZOOM_TARGET = 65
+  let zoomScale = 1
+  let breakOpacity = 0
+  if (fillPct > 0 && fillPct < ZOOM_THRESHOLD) {
+    const blend = Math.pow(1 - fillPct / ZOOM_THRESHOLD, 2)
+    const effectiveTarget = fillPct + (ZOOM_TARGET - fillPct) * blend
+    zoomScale = effectiveTarget / fillPct
+    breakOpacity = blend
+  }
+  const zoomed = zoomScale > 1
+
   // Group consecutive segments of the same type to avoid overflow with many small segments
   const groups = []
   for (let i = 0; i < req.segments.length; i++) {
@@ -120,15 +133,19 @@ export function renderContextBar() {
 
   let html = ''
   for (const g of groups) {
-    const w = (g.tokens / budget) * 100
+    const w = (g.tokens / budget) * 100 * zoomScale
     if (w < 0.1) continue
     const label = g.count > 1 ? `${g.name} (×${g.count})` : g.name
     html += `<div class="bar-segment" style="width:${w}%;background:linear-gradient(180deg,${g.color}cc,${g.color}88);border-right:1.5px solid var(--bg3)" title="${label}: ${fmt(g.tokens)} tokens" onclick="openModal(${g.startIndex})">`
     if (w > 5) html += `<span>${w > 15 ? label : fmt(g.tokens)}</span>`
     html += '</div>'
   }
+  if (zoomed) html += `<div class="bar-break" style="opacity:${breakOpacity}"></div>`
   if (fillPct < 100) html += `<div class="bar-empty"><span>${fmt(budget - total)} free</span></div>`
   barInner.innerHTML = html
+
+  // Hide bar markers when zoom is active — thresholds are irrelevant at <30% utilization
+  barOuter.querySelectorAll('.bar-marker').forEach(el => { el.style.display = zoomed ? 'none' : '' })
 
   const seen = new Map()
   for (const seg of req.segments) { const k = getSegLabel(seg), c = getSegColor(seg); if (!seen.has(k)) seen.set(k, c) }

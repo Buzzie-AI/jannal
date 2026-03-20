@@ -39,5 +39,5 @@ export function renderProfileSelector() {
 
   const isFiltering = currentValue !== 'All Tools'
   select.className = 'profile-select' + (isFiltering ? ' filtering' : '')
-  badge.style.display = isFiltering ? 'inline' : 'none'
+  badge.style.display = isFiltering ? 'flex' : 'none'
 }

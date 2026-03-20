@@ -1,7 +1,12 @@
 import { getSegmentColor } from './state.js'
 
-// Re-export from shared lib for UI use (Vite bundles from project root)
-export { estimateToolTokens } from '../lib/tokens.js'
+// Inline copy of lib/tokens.js helpers (CJS module can't be imported in Vite dev server)
+const CHARS_PER_TOKEN = 3.8
+export function estimateToolTokens(tool) {
+  if (!tool) return 0
+  const str = typeof tool === 'string' ? tool : JSON.stringify(tool)
+  return Math.ceil(str.length / CHARS_PER_TOKEN)
+}
 
 export function getSegColor(seg) {
   if (seg.type === 'message' && seg.role === 'assistant') return getSegmentColor('assistant')
