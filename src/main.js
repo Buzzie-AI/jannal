@@ -1,7 +1,7 @@
 import './styles.css'
 import { state } from './state.js'
 import { connect, rebuildGroups } from './ws.js'
-import { renderAll, renderContextBar, renderReqList, renderDetail, renderStatus, copyClaudeCommand } from './render.js'
+import { renderAll, renderContextBar, renderReqList, renderDetail, renderStatus, renderSessionTabs, copyClaudeCommand } from './render.js'
 import { openModal, closeModal, setModalView, toggleAllTools, toggleGroupTools, toggleGroupAccordion, toggleGroupCheckbox, onToolToggle, saveCurrentAsProfile, createProfileFromThisTurn, filterModalContent, copyModalContent } from './modal.js'
 import { onProfileChange } from './profiles.js'
 import { restoreSession, exportSessionJSON, exportSessionCSV, downloadExport, persistSession } from './session.js'
@@ -22,6 +22,33 @@ function clearReqs() {
   state.selectedReq = null
   state.groups = {}
   state.expandedGroups = {}
+  state.sessions = {}
+  state.activeSessionTab = null
+  renderAll()
+  persistSession(state)
+}
+
+function selectSessionTab(id) {
+  state.activeSessionTab = id
+  // Auto-select the latest request from this session
+  let latestIdx = null
+  for (let i = state.reqs.length - 1; i >= 0; i--) {
+    if (id === null || state.reqs[i].tabKey === id) {
+      latestIdx = i
+      break
+    }
+  }
+  state.selectedReq = latestIdx
+  renderAll()
+  persistSession(state)
+}
+
+function dismissSessionTab(id) {
+  delete state.sessions[id]
+  if (state.activeSessionTab === id) {
+    state.activeSessionTab = null
+    state.selectedReq = state.reqs.length > 0 ? state.reqs.length - 1 : null
+  }
   renderAll()
   persistSession(state)
 }
@@ -77,6 +104,8 @@ window.onToolToggle = onToolToggle
 window.saveCurrentAsProfile = saveCurrentAsProfile
 window.createProfileFromThisTurn = createProfileFromThisTurn
 window.copyClaudeCommand = copyClaudeCommand
+window.selectSessionTab = selectSessionTab
+window.dismissSessionTab = dismissSessionTab
 window.filterModalContent = filterModalContent
 window.copyModalContent = copyModalContent
 

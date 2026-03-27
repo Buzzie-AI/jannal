@@ -382,7 +382,7 @@ body {
 .req-card:active { transform: scale(0.99); }
 .req-card.selected { background: rgba(245,158,11,0.05); border-left: 3px solid var(--amber); padding-left: 9px; }
 .req-card-head { display: flex; justify-content: space-between; align-items: center; }
-.req-label { font-size: 12px; font-weight: 700; color: var(--text); }
+.req-label { font-size: 12px; font-weight: 500; color: var(--text); }
 .req-tokens { font-size: 11px; font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .req-mini-bar { height: 3px; border-radius: 99px; background: var(--bg); overflow: hidden; margin-top: 2px; }
 .req-mini-fill { height: 100%; border-radius: 99px; transition: width 0.3s var(--ease-out); box-shadow: 0 0 4px var(--overlay-5); }
@@ -411,7 +411,7 @@ body {
 }
 .group-chevron.expanded { transform: rotate(90deg); }
 .group-title {
-  font-size: 13px; font-weight: 700; color: var(--text);
+  font-size: 13px; font-weight: 600; color: var(--text);
   flex: 1; min-width: 0;
 }
 .group-summary {
@@ -681,6 +681,67 @@ body {
   font-size: 11px; color: var(--green); font-weight: 600;
 }
 
+/* ─── Session Tabs ─── */
+/* ─── Session Tabs (full-width bar between header and context bar) ─── */
+.session-tabs {
+  display: none;
+  overflow-x: auto;
+  gap: 0;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  scrollbar-width: none;
+  animation: fadeInUp var(--duration-normal) var(--ease-out) 30ms both;
+}
+.session-tabs::-webkit-scrollbar { display: none; }
+.session-tabs.visible { display: flex; }
+.session-tab {
+  position: relative;
+  padding: 8px 18px 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text3);
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+  flex-shrink: 0;
+}
+.session-tab:hover { color: var(--text2); }
+.session-tab.active {
+  color: var(--cyan);
+  border-bottom-color: var(--cyan);
+  font-weight: 700;
+}
+.session-tab-close {
+  display: none;
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text3);
+  cursor: pointer;
+}
+.session-tab:hover .session-tab-close { display: block; }
+.session-tab-close:hover { color: var(--red); }
+
+/* Session tab label + path subtitle */
+.session-tab-label { display: block; }
+.session-tab-path {
+  display: block;
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--text3);
+  font-family: var(--font-mono);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
 /* ─── Animations ─── */
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 .waiting { animation: pulse 2s ease-in-out infinite; }
@@ -697,9 +758,9 @@ body {
 
 /* Staggered page load */
 .header { animation: fadeInUp var(--duration-normal) var(--ease-out) both; }
-.bar-container { animation: fadeInUp var(--duration-normal) var(--ease-out) 60ms both; }
-.reqs-panel { animation: fadeInUp var(--duration-normal) var(--ease-out) 120ms both; }
-.detail-panel { animation: fadeInUp var(--duration-normal) var(--ease-out) 180ms both; }
+.bar-container { animation: fadeInUp var(--duration-normal) var(--ease-out) 80ms both; }
+.reqs-panel { animation: fadeInUp var(--duration-normal) var(--ease-out) 140ms both; }
+.detail-panel { animation: fadeInUp var(--duration-normal) var(--ease-out) 200ms both; }
 
 /* Universal active press */
 button:active { transform: scale(0.97); }

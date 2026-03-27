@@ -8,6 +8,7 @@ export function renderAll(opts = {}) {
   renderStatus()
   renderContextBar()
   renderTokenChart()
+  renderSessionTabs()
   renderReqList()
   // Only re-render detail if the selected request's data changed,
   // or if explicitly requested (e.g. user clicked a different request).
@@ -20,6 +21,58 @@ function renderExportButton() {
   if (btn) {
     btn.disabled = state.reqs.length === 0
     btn.title = state.reqs.length === 0 ? 'No data to export' : 'Export session as JSON or CSV'
+  }
+}
+
+/**
+ * Returns array of { originalIndex, req } filtered by active session tab.
+ * When activeSessionTab is null ("All"), returns all requests.
+ */
+function getFilteredReqs() {
+  const result = []
+  for (let i = 0; i < state.reqs.length; i++) {
+    const req = state.reqs[i]
+    if (state.activeSessionTab === null || req.tabKey === state.activeSessionTab) {
+      result.push({ originalIndex: i, req })
+    }
+  }
+  return result
+}
+
+export function renderSessionTabs() {
+  const el = document.getElementById('sessionTabs')
+  if (!el) return
+  const sessionIds = Object.keys(state.sessions)
+  if (sessionIds.length === 0) {
+    el.classList.remove('visible')
+    return
+  }
+  el.classList.add('visible')
+
+  let html = `<div class="session-tab${state.activeSessionTab === null ? ' active' : ''}" data-tab="">All</div>`
+  for (const sid of sessionIds) {
+    const s = state.sessions[sid]
+    const isActive = state.activeSessionTab === sid
+    html += `<div class="session-tab${isActive ? ' active' : ''}" data-tab="${escapeHtml(sid)}">`
+    html += `<span class="session-tab-label">${escapeHtml(s.label)}</span>`
+    if (s.path) html += `<span class="session-tab-path">${escapeHtml(s.path)}</span>`
+    html += `<span class="session-tab-close" data-tab-close="${escapeHtml(sid)}">&times;</span>`
+    html += `</div>`
+  }
+  el.innerHTML = html
+
+  // Bind click handlers via delegation (avoids inline onclick with special chars in paths)
+  el.onclick = (e) => {
+    const closeBtn = e.target.closest('[data-tab-close]')
+    if (closeBtn) {
+      e.stopPropagation()
+      window.dismissSessionTab(closeBtn.dataset.tabClose)
+      return
+    }
+    const tab = e.target.closest('[data-tab]')
+    if (tab) {
+      window.selectSessionTab(tab.dataset.tab || null)
+    }
   }
 }
 
@@ -166,14 +219,14 @@ export function renderTokenChart() {
   const chart = document.getElementById('tokenChart')
   if (!container || !chart) return
 
-  if (state.reqs.length < 2) {
+  const filtered = getFilteredReqs()
+  if (filtered.length < 2) {
     container.style.display = 'none'
     return
   }
 
   container.style.display = 'block'
-  const reqs = state.reqs
-  const values = reqs.map(t => t.actualUsage?.input_tokens ?? t.totalEstimatedTokens ?? 0)
+  const values = filtered.map(f => f.req.actualUsage?.input_tokens ?? f.req.totalEstimatedTokens ?? 0)
   const maxVal = Math.max(...values)
   const minVal = Math.min(...values)
   const range = maxVal - minVal || 1
@@ -221,9 +274,14 @@ export function copyClaudeCommand() {
 
 export function renderReqList() {
   const el = document.getElementById('reqList')
-  if (state.reqs.length === 0) {
-    const cmd = getClaudeCommand()
-    el.innerHTML = `<div class="empty"><div class="empty-icon waiting">&#x1F50D;</div><h2>Waiting for requests...</h2><p>Start Claude Code with:<br><code style="color:var(--cyan);font-size:11px">${cmd}</code> <button id="copyCommandBtn" class="copy-command-btn" onclick="copyClaudeCommand()" title="Copy to clipboard">Copy</button></p></div>`
+  const filtered = getFilteredReqs()
+  if (filtered.length === 0) {
+    if (state.reqs.length === 0) {
+      const cmd = getClaudeCommand()
+      el.innerHTML = `<div class="empty"><div class="empty-icon waiting">&#x1F50D;</div><h2>Waiting for requests...</h2><p>Start Claude Code with:<br><code style="color:var(--cyan);font-size:11px">${cmd}</code> <button id="copyCommandBtn" class="copy-command-btn" onclick="copyClaudeCommand()" title="Copy to clipboard">Copy</button></p></div>`
+    } else {
+      el.innerHTML = `<div class="empty"><div class="empty-icon">&#x1F50D;</div><h2>No requests in this session</h2></div>`
+    }
     return
   }
 
@@ -238,23 +296,23 @@ export function renderReqList() {
   const scrollTop = el.scrollTop
 
   if (state.groupView && Object.keys(state.groups).length > 0) {
-    renderGroupedList(el)
+    renderGroupedList(el, filtered)
   } else {
-    renderFlatList(el)
+    renderFlatList(el, filtered)
   }
 
   el.scrollTop = scrollTop
 }
 
-function renderFlatList(el) {
+function renderFlatList(el, filtered) {
   let html = ''
-  for (let i = state.reqs.length - 1; i >= 0; i--) {
-    html += renderReqCard(i)
+  for (let j = filtered.length - 1; j >= 0; j--) {
+    html += renderReqCard(filtered[j].originalIndex, j + 1)
   }
   el.innerHTML = html
 }
 
-function renderReqCard(i) {
+function renderReqCard(i, displayNum) {
   const t = state.reqs[i]
   const total = t.actualUsage ? t.actualUsage.input_tokens : t.totalEstimatedTokens
   const fillPct = Math.min((total / t.budget) * 100, 100)
@@ -275,7 +333,8 @@ function renderReqCard(i) {
 
   let html = `<div class="req-card${i === state.selectedReq ? ' selected' : ''}" onclick="selectReq(${i})">`
   // Row 1: Req N + token size + mini bar
-  html += `<div class="req-card-head"><span class="req-label">Req ${t.turn}</span><span class="req-tokens" style="color:${color}">${tokenLabel}</span></div>`
+  const reqNum = displayNum != null ? displayNum : t.turn
+  html += `<div class="req-card-head"><span class="req-label">Req ${reqNum}</span><span class="req-tokens" style="color:${color}">${tokenLabel}</span></div>`
   html += `<div class="req-mini-bar"><div class="req-mini-fill" style="width:${fillPct}%;background:${color}"></div></div>`
   // Row 2: model | in/out | cost
   html += `<div class="req-meta"><span>${shortModel}</span>`
@@ -286,7 +345,16 @@ function renderReqCard(i) {
   return html
 }
 
-function renderGroupedList(el) {
+function renderGroupedList(el, filtered) {
+  // Build set of filtered original indices for quick lookup
+  const filteredSet = new Set(filtered.map(f => f.originalIndex))
+  // Build per-session display number map (1-based, ordered by appearance)
+  const displayNumMap = new Map()
+  let counter = 0
+  for (const f of filtered) {
+    displayNumMap.set(f.originalIndex, ++counter)
+  }
+
   // Get group IDs sorted by most recent first
   const groupIds = Object.keys(state.groups)
     .map(Number)
@@ -295,12 +363,17 @@ function renderGroupedList(el) {
   let html = ''
   for (const gid of groupIds) {
     const group = state.groups[gid]
+
+    // Filter group's reqIndices to only those matching the session filter
+    const visibleIndices = group.reqIndices.filter(ri => filteredSet.has(ri))
+    if (visibleIndices.length === 0) continue
+
     const expanded = state.expandedGroups[gid] !== false // default to expanded for first
 
-    // Compute group totals
+    // Compute group totals (only for visible requests)
     let totalCost = 0
     let totalTokens = 0
-    for (const ri of group.reqIndices) {
+    for (const ri of visibleIndices) {
       const t = state.reqs[ri]
       if (!t) continue
       if (t.actualCost) totalCost += t.actualCost.totalCost
@@ -308,9 +381,7 @@ function renderGroupedList(el) {
       totalTokens += t.actualUsage?.input_tokens ?? t.totalEstimatedTokens ?? 0
     }
 
-    const reqCount = group.reqIndices.length
-    const sessionKeys = Object.keys(group.sessions)
-    const isMultiSession = sessionKeys.length > 1
+    const reqCount = visibleIndices.length
     const turnNum = gid + 1
 
     // Group header
@@ -327,18 +398,25 @@ function renderGroupedList(el) {
     // Children
     html += `<div class="group-children ${expanded ? '' : 'collapsed'}">`
 
+    // Check if this group has multiple sessions (among visible requests)
+    const visibleSessions = {}
+    for (const ri of visibleIndices) {
+      const t = state.reqs[ri]
+      const sh = t?.sessionHash || 'unknown'
+      if (!visibleSessions[sh]) visibleSessions[sh] = { reqIndices: [], model: t?.model || 'unknown' }
+      visibleSessions[sh].reqIndices.push(ri)
+    }
+    const sessionKeys = Object.keys(visibleSessions)
+    const isMultiSession = sessionKeys.length > 1
+
     if (isMultiSession) {
-      // Multiple sessions: show session labels
-      // Main session first (most messages), then subagents
       const sorted = sessionKeys.sort((a, b) => {
-        const aCount = group.sessions[a].reqIndices.length
-        const bCount = group.sessions[b].reqIndices.length
-        return bCount - aCount
+        return visibleSessions[b].reqIndices.length - visibleSessions[a].reqIndices.length
       })
 
       let sessionNum = 0
       for (const sh of sorted) {
-        const session = group.sessions[sh]
+        const session = visibleSessions[sh]
         const model = session.model || 'unknown'
         const isMain = sessionNum === 0
         const label = isMain ? 'Main' : 'Subagent'
@@ -349,16 +427,14 @@ function renderGroupedList(el) {
         html += `<span>${model} · ${session.reqIndices.length} req${session.reqIndices.length !== 1 ? 's' : ''}</span>`
         html += `</div>`
 
-        // Newest requests on top within each session
         for (let k = session.reqIndices.length - 1; k >= 0; k--) {
-          html += renderReqCard(session.reqIndices[k])
+          html += renderReqCard(session.reqIndices[k], displayNumMap.get(session.reqIndices[k]))
         }
         sessionNum++
       }
     } else {
-      // Single session: just render requests, newest on top
-      for (let k = group.reqIndices.length - 1; k >= 0; k--) {
-        html += renderReqCard(group.reqIndices[k])
+      for (let k = visibleIndices.length - 1; k >= 0; k--) {
+        html += renderReqCard(visibleIndices[k], displayNumMap.get(visibleIndices[k]))
       }
     }
 

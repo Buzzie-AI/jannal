@@ -329,6 +329,41 @@ function createServer(opts = {}) {
   }
 
   /**
+   * Extract Claude Code session identity from the request body.
+   * - sessionId: the per-session hash from the billing header (cch=...)
+   * - sessionLabel: last path component of the working directory
+   * - sessionPath: full working directory path
+   */
+  function extractSessionInfo(body) {
+    if (!body.system) return { sessionId: null, sessionLabel: null, sessionPath: null }
+    let text
+    if (typeof body.system === 'string') {
+      text = body.system
+    } else if (Array.isArray(body.system)) {
+      text = body.system
+        .filter(b => b.type === 'text' && b.text)
+        .map(b => b.text)
+        .join('\n')
+    } else {
+      return { sessionId: null, sessionLabel: null, sessionPath: null }
+    }
+
+    const cchMatch = text.match(/cch=([a-zA-Z0-9]+)/)
+    const sessionId = cchMatch ? cchMatch[1] : null
+
+    const dirMatch = text.match(/Primary working directory:\s*(.+)/)
+    let sessionLabel = null
+    let sessionPath = null
+    if (dirMatch) {
+      sessionPath = dirMatch[1].trim()
+      const parts = sessionPath.split('/')
+      sessionLabel = parts[parts.length - 1] || parts[parts.length - 2] || sessionPath
+    }
+
+    return { sessionId, sessionLabel, sessionPath }
+  }
+
+  /**
    * Walk body.messages backwards to find the most recent human-authored text.
    */
   function extractLastHumanText(body) {
@@ -580,6 +615,7 @@ function createServer(opts = {}) {
     const model = body.model || "unknown";
     const sessionHash = getSessionHash(body);
     const groupId = assignGroup(body);
+    const { sessionId, sessionLabel, sessionPath } = extractSessionInfo(body);
 
     const toolsSeg = segments.find((s) => s.type === "tools");
     const userMessages = (body.messages || [])
@@ -611,6 +647,9 @@ function createServer(opts = {}) {
       toolCount: toolsSeg?.count || 0,
       estimatedToolTokens: toolsSeg?.tokens || 0,
       userMessages,
+      sessionId,
+      sessionLabel,
+      sessionPath,
     });
 
     // Evict old requests if over limit
@@ -637,6 +676,9 @@ function createServer(opts = {}) {
       toolsUsed: [...toolsUsed],
       groupId,
       sessionHash,
+      sessionId,
+      sessionLabel,
+      sessionPath,
     };
   }
 

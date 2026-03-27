@@ -100,6 +100,23 @@ export function connect() {
         data.toolsUsed.forEach(name => state.toolsUsed.add(name))
       }
       state.reqs.push(data)
+      // Register session tab — deduplicate by path, skip sessions without a path
+      if (data.sessionId && data.sessionPath) {
+        const tabKey = data.sessionPath
+        if (!state.sessions[tabKey]) {
+          state.sessions[tabKey] = {
+            id: tabKey,
+            label: data.sessionLabel || data.sessionId,
+            path: data.sessionPath || null,
+            sessionIds: [data.sessionId],
+            firstSeen: data.timestamp,
+          }
+        } else if (!state.sessions[tabKey].sessionIds.includes(data.sessionId)) {
+          state.sessions[tabKey].sessionIds.push(data.sessionId)
+        }
+        // Tag request with the tab key for filtering
+        data.tabKey = tabKey
+      }
       // Evict oldest requests to keep memory bounded
       if (state.reqs.length > MAX_REQS) {
         state.reqs.splice(0, state.reqs.length - MAX_REQS)

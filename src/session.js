@@ -15,6 +15,8 @@ export function persistSession(state) {
         reqs: state.reqs,
         selectedReq: state.selectedReq,
         groupView: state.groupView,
+        sessions: state.sessions,
+        activeSessionTab: state.activeSessionTab,
         savedAt: Date.now(),
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
@@ -39,6 +41,14 @@ export function restoreSession(state) {
         ? selectedReq
         : state.reqs.length - 1
       if (data.groupView != null) state.groupView = data.groupView
+      if (data.sessions) state.sessions = data.sessions
+      if (data.activeSessionTab !== undefined) state.activeSessionTab = data.activeSessionTab
+      // Backfill tabKey on old requests that only have sessionId
+      for (const req of state.reqs) {
+        if (req.sessionId && !req.tabKey) {
+          req.tabKey = req.sessionPath || req.sessionId
+        }
+      }
       // Rebuild toolsUsed from restored reqs
       if (state.toolsUsed) {
         state.toolsUsed.clear()

@@ -12,6 +12,8 @@ export const state = {
   groups: {},          // groupId → { id, reqIndices, sessions, startTime, endTime }
   groupView: true,     // true = grouped, false = flat list
   expandedGroups: {},  // groupId → boolean
+  sessions: {},           // sessionId → { id, label, firstSeen }
+  activeSessionTab: null, // null = "All", or a sessionId string
 }
 
 export let modalState = {
