@@ -1,7 +1,7 @@
 import './styles.css'
 import { state } from './state.js'
 import { connect, rebuildGroups } from './ws.js'
-import { renderAll, renderContextBar, renderReqList, renderDetail, renderStatus, renderSessionTabs, copyClaudeCommand } from './render.js'
+import { renderAll, renderContextBar, renderReqList, renderDetail, renderStatus, renderSessionTabs, copyClaudeCommand, getFilteredReqs } from './render.js'
 import { openModal, closeModal, setModalView, toggleAllTools, toggleGroupTools, toggleGroupAccordion, toggleGroupCheckbox, onToolToggle, saveCurrentAsProfile, createProfileFromThisTurn, filterModalContent, copyModalContent } from './modal.js'
 import { onProfileChange } from './profiles.js'
 import { restoreSession, exportSessionJSON, exportSessionCSV, downloadExport, persistSession } from './session.js'
@@ -134,15 +134,25 @@ function globalSearch(query) {
       }
 
       const q = query.toLowerCase()
+      const filtered = getFilteredReqs()
       results.innerHTML = data.results.map(r => {
         const reqIdx = state.reqs.findIndex(t => t.turn === r.turnId)
-        const reqLabel = reqIdx >= 0 ? `Req ${state.reqs[reqIdx].turn}` : `Req ${r.turnId}`
+        // Per-session display number
+        let displayNum = r.turnId
+        if (reqIdx >= 0) {
+          const pos = filtered.findIndex(f => f.originalIndex === reqIdx)
+          displayNum = pos >= 0 ? pos + 1 : reqIdx + 1
+        }
+        // Segment name from request data
+        const segName = reqIdx >= 0 && state.reqs[reqIdx].segments[r.segIndex]
+          ? state.reqs[reqIdx].segments[r.segIndex].name
+          : `Segment ${r.segIndex}`
         const snippet = r.snippet
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;')
           .replace(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'), '<mark>$1</mark>')
         return `<div class="search-result-item" data-turn="${reqIdx}" data-seg="${r.segIndex}">
-          <div class="search-result-turn">${reqLabel} · segment ${r.segIndex}</div>
+          <div class="search-result-turn">Req ${displayNum} · ${segName}</div>
           <div class="search-result-snippet">${snippet}</div>
         </div>`
       }).join('')

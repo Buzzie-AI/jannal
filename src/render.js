@@ -28,7 +28,7 @@ function renderExportButton() {
  * Returns array of { originalIndex, req } filtered by active session tab.
  * When activeSessionTab is null ("All"), returns all requests.
  */
-function getFilteredReqs() {
+export function getFilteredReqs() {
   const result = []
   for (let i = 0; i < state.reqs.length; i++) {
     const req = state.reqs[i]
