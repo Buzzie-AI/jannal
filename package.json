@@ -7,7 +7,7 @@
     ".": "./server.js"
   },
   "bin": {
-    "jannal": "./bin/jannal.js"
+    "jannal": "bin/jannal.js"
   },
   "files": [
     "bin/",
@@ -39,7 +39,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Buzzie-AI/jannal"
+    "url": "git+https://github.com/Buzzie-AI/jannal.git"
   },
   "engines": {
     "node": ">=18.0.0"
