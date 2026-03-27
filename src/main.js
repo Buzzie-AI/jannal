@@ -143,16 +143,18 @@ function globalSearch(query) {
           const pos = filtered.findIndex(f => f.originalIndex === reqIdx)
           displayNum = pos >= 0 ? pos + 1 : reqIdx + 1
         }
-        // Segment name from request data
+        // Segment name and turn number from request data
         const segName = reqIdx >= 0 && state.reqs[reqIdx].segments[r.segIndex]
           ? state.reqs[reqIdx].segments[r.segIndex].name
           : `Segment ${r.segIndex}`
+        const turnNum = reqIdx >= 0 && state.reqs[reqIdx].groupId != null
+          ? `Turn ${state.reqs[reqIdx].groupId + 1} · ` : ''
         const snippet = r.snippet
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;')
           .replace(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'), '<mark>$1</mark>')
         return `<div class="search-result-item" data-turn="${reqIdx}" data-seg="${r.segIndex}">
-          <div class="search-result-turn">Req ${displayNum} · ${segName}</div>
+          <div class="search-result-turn">${turnNum}Req ${displayNum} · ${segName}</div>
           <div class="search-result-snippet">${snippet}</div>
         </div>`
       }).join('')

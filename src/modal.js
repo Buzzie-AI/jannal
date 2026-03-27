@@ -21,7 +21,8 @@ export async function openModal(segIndex) {
   const color = getSegColor(seg)
   document.getElementById('modalColorBar').style.background = color
   document.getElementById('modalTitle').textContent = seg.name
-  document.getElementById('modalMeta').textContent = `${getSegLabel(seg)}${seg.role ? ' (' + seg.role + ')' : ''}${seg.count ? ' — ' + seg.count + ' tools' : ''}`
+  const turnLabel = req.groupId != null ? `Turn ${req.groupId + 1} · ` : ''
+  document.getElementById('modalMeta').textContent = `${turnLabel}${getSegLabel(seg)}${seg.role ? ' (' + seg.role + ')' : ''}${seg.count ? ' — ' + seg.count + ' tools' : ''}`
 
   // Stats
   const statsHtml = `
