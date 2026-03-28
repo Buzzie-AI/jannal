@@ -89,6 +89,7 @@ export function connect() {
       if (data.profiles) state.profiles = data.profiles
       if (data.activeProfile) state.activeProfile = data.activeProfile
       if (data.routerMode != null) state.routerMode = data.routerMode
+      if (data.strip) Object.assign(state.strip, data.strip)
       renderProfileSelector()
       renderAll() // full re-render — premium state affects header, detail, and savings
       return
@@ -218,6 +219,11 @@ export function connect() {
     if (data.type === 'active_profile_changed') {
       state.activeProfile = data.active || 'All Tools'
       renderProfileSelector()
+    }
+
+    if (data.type === 'settings_updated') {
+      if (data.strip) Object.assign(state.strip, data.strip)
+      renderAll()
     }
   }
 }

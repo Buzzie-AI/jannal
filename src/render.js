@@ -14,6 +14,12 @@ export function renderAll(opts = {}) {
   // or if explicitly requested (e.g. user clicked a different request).
   if (!opts.skipDetail) renderDetail()
   renderExportButton()
+  renderStripBadge()
+}
+
+function renderStripBadge() {
+  const badge = document.getElementById('stripBadge')
+  if (badge) badge.style.display = state.strip.mode !== 'off' ? 'flex' : 'none'
 }
 
 function renderExportButton() {
@@ -448,6 +454,31 @@ function renderGroupedList(el, filtered) {
   }
 
   el.innerHTML = html
+}
+
+export function renderSettings() {
+  const el = document.getElementById('settingsBody')
+  const overlay = document.getElementById('settingsOverlay')
+
+  const s = state.strip
+  const checked = (mode) => s.mode === mode ? 'checked' : ''
+
+  el.innerHTML = `<div class="settings-view">
+    <div class="settings-section">
+      <div class="settings-section-title">Smart Strip</div>
+      <div class="settings-section-desc">Reduce token usage by stripping tool call/result messages from past conversation turns. Only the user message and final assistant response are kept.</div>
+      <div class="settings-radio">
+        <label><input type="radio" name="stripMode" value="off" ${checked('off')}> Off <span style="color:var(--text3);font-size:10px">— no modification</span></label>
+        <label><input type="radio" name="stripMode" value="keep_n" ${checked('keep_n')}> Keep last <input type="number" class="settings-inline-input" id="stripKeepN" value="${s.keepN}" min="1" max="20"> turns intact</label>
+        <label><input type="radio" name="stripMode" value="strip_all" ${checked('strip_all')}> Strip all past turns <span style="color:var(--text3);font-size:10px">— most aggressive</span></label>
+        <label><input type="radio" name="stripMode" value="smart_size" ${checked('smart_size')}> Strip turns over <input type="number" class="settings-inline-input" id="stripThreshold" value="${s.threshold}" min="100" step="500"> tokens</label>
+      </div>
+      ${s.mode !== 'off' ? '<div class="settings-savings">Smart Strip is active. Savings will appear per request in the context bar.</div>' : ''}
+    </div>
+  </div>`
+
+  if (state.showSettings) overlay.classList.add('open')
+  else overlay.classList.remove('open')
 }
 
 export function renderDetail() {

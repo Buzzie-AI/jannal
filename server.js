@@ -295,6 +295,120 @@ function createServer(opts = {}) {
 
   loadProfiles();
 
+  // ─── Smart Strip settings ─────────────────────────────────────────────────
+
+  const SETTINGS_FILE = path.join(__dirname, "settings.json");
+
+  let stripSettings = { mode: "off", keepN: 3, threshold: 2000 };
+
+  function loadSettings() {
+    try {
+      if (fs.existsSync(SETTINGS_FILE)) {
+        const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
+        if (data.strip) Object.assign(stripSettings, data.strip);
+      }
+    } catch (e) {
+      console.warn("Failed to load settings:", e.message);
+    }
+  }
+
+  function saveSettings() {
+    try {
+      fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ strip: stripSettings }, null, 2));
+    } catch (e) {
+      console.warn("Failed to save settings:", e.message);
+    }
+  }
+
+  /**
+   * Identify user-initiated turns in the message history.
+   * A turn starts with a user message containing text (no tool_result blocks).
+   * Returns array of { startIdx, endIdx } covering each turn's message range.
+   */
+  function identifyTurns(messages) {
+    const turns = [];
+    let current = null;
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      const hasToolResult = Array.isArray(msg.content) &&
+        msg.content.some(c => c.type === "tool_result");
+      if (msg.role === "user" && !hasToolResult) {
+        current = { startIdx: i, endIdx: i };
+        turns.push(current);
+      } else if (current) {
+        current.endIdx = i;
+      }
+    }
+    return turns;
+  }
+
+  /**
+   * Apply Smart Strip to conversation history.
+   * Strips intermediate tool_use/tool_result messages from past turns,
+   * keeping only the first (user text) and last (assistant text) messages.
+   * Returns { messages, stripped, estimatedTokensSaved }.
+   */
+  function applySmartStrip(messages) {
+    if (stripSettings.mode === "off" || !messages || messages.length < 3) {
+      return { messages, stripped: 0, estimatedTokensSaved: 0 };
+    }
+
+    const turns = identifyTurns(messages);
+    if (turns.length < 2) return { messages, stripped: 0, estimatedTokensSaved: 0 };
+
+    // Determine which turns to strip based on mode
+    let turnsToKeepIntact;
+    if (stripSettings.mode === "keep_n") {
+      turnsToKeepIntact = stripSettings.keepN || 3;
+    } else if (stripSettings.mode === "strip_all") {
+      turnsToKeepIntact = 1; // keep only the current (last) turn
+    } else {
+      turnsToKeepIntact = 1; // smart_size also processes all past turns
+    }
+
+    // Always keep the last N turns intact (current turn = last one)
+    const turnsToStrip = turns.slice(0, Math.max(0, turns.length - turnsToKeepIntact));
+
+    // Collect indices to remove
+    const indicesToRemove = new Set();
+    let tokensSaved = 0;
+
+    for (const turn of turnsToStrip) {
+      // A turn needs at least 3 messages to have intermediate ones to strip
+      if (turn.endIdx - turn.startIdx < 2) continue;
+
+      // In smart_size mode, check if this turn's intermediate messages are large enough
+      if (stripSettings.mode === "smart_size") {
+        let intermediateTokens = 0;
+        for (let i = turn.startIdx + 1; i < turn.endIdx; i++) {
+          const content = typeof messages[i].content === "string"
+            ? messages[i].content
+            : JSON.stringify(messages[i].content);
+          intermediateTokens += Math.ceil(content.length / 3.8);
+        }
+        if (intermediateTokens < (stripSettings.threshold || 2000)) continue;
+      }
+
+      // Strip everything between first and last message of this turn
+      for (let i = turn.startIdx + 1; i < turn.endIdx; i++) {
+        const content = typeof messages[i].content === "string"
+          ? messages[i].content
+          : JSON.stringify(messages[i].content);
+        tokensSaved += Math.ceil(content.length / 3.8);
+        indicesToRemove.add(i);
+      }
+    }
+
+    if (indicesToRemove.size === 0) {
+      return { messages, stripped: 0, estimatedTokensSaved: 0 };
+    }
+
+    const result = messages.filter((_, i) => !indicesToRemove.has(i));
+    return { messages: result, stripped: indicesToRemove.size, estimatedTokensSaved: tokensSaved };
+  }
+
+  loadSettings();
+
   // ─── Group tracking ────────────────────────────────────────────────────────
 
   let groupCounter = 0;
@@ -778,6 +892,31 @@ function createServer(opts = {}) {
         return;
       }
 
+      // ── API: Settings (Smart Strip) ──
+      if (req.url === "/api/settings" && req.method === "GET") {
+        jsonResponse(res, 200, { strip: stripSettings });
+        return;
+      }
+      if (req.url === "/api/settings" && req.method === "POST") {
+        readBody(req, (err, body) => {
+          if (err) { jsonResponse(res, 400, { error: err.message }); return; }
+          try {
+            const data = JSON.parse(body);
+            if (data.strip) {
+              if (data.strip.mode) stripSettings.mode = data.strip.mode;
+              if (data.strip.keepN != null) stripSettings.keepN = Math.max(1, parseInt(data.strip.keepN) || 3);
+              if (data.strip.threshold != null) stripSettings.threshold = Math.max(100, parseInt(data.strip.threshold) || 2000);
+            }
+            saveSettings();
+            broadcast({ type: "settings_updated", strip: stripSettings });
+            jsonResponse(res, 200, { success: true, strip: stripSettings });
+          } catch (e) {
+            jsonResponse(res, 400, { error: e.message });
+          }
+        });
+        return;
+      }
+
       // ── API: List profiles ──
       if (req.url === "/api/profiles") {
         jsonResponse(res, 200, { profiles, active: activeProfile });
@@ -902,10 +1041,11 @@ function createServer(opts = {}) {
           const originalToolCount = (parsed.tools || []).length;
           const { filtered, removed } = applyToolFilter(parsed.tools, activeProfile);
 
+          let needsReserialize = false;
+
           if (removed.length > 0) {
             parsed.tools = filtered;
-            const modifiedStr = JSON.stringify(parsed);
-            forwardBuffer = Buffer.from(modifiedStr, "utf-8");
+            needsReserialize = true;
             filteringInfo = {
               originalToolCount,
               filteredToolCount: filtered.length,
@@ -916,7 +1056,23 @@ function createServer(opts = {}) {
             };
           }
 
-          // Analyze the FILTERED request (what actually gets sent)
+          // Apply Smart Strip to conversation history
+          let stripInfo = null;
+          const stripResult = applySmartStrip(parsed.messages);
+          if (stripResult.stripped > 0) {
+            parsed.messages = stripResult.messages;
+            needsReserialize = true;
+            stripInfo = {
+              messagesStripped: stripResult.stripped,
+              estimatedTokensSaved: stripResult.estimatedTokensSaved,
+            };
+          }
+
+          if (needsReserialize) {
+            forwardBuffer = Buffer.from(JSON.stringify(parsed), "utf-8");
+          }
+
+          // Analyze the FILTERED + STRIPPED request (what actually gets sent)
           const analysis = analyzeRequest(parsed);
 
           // Attach filtering info
@@ -927,12 +1083,17 @@ function createServer(opts = {}) {
             analysis.removedTools = filteringInfo.removedTools;
             analysis.tokensSaved = filteringInfo.tokensSaved;
           }
+          if (stripInfo) {
+            analysis.stripActive = true;
+            analysis.messagesStripped = stripInfo.messagesStripped;
+            analysis.stripTokensSaved = stripInfo.estimatedTokensSaved;
+          }
 
           requestTurn = analysis.turn;
 
           broadcast({ type: "request", ...analysis });
           console.log(
-            `[R${analysis.turn}] ${analysis.model} | ${analysis.segments.length} segs | ~${analysis.totalEstimatedTokens} tokens | $${analysis.estimatedCost.totalCost.toFixed(4)}${filteringInfo ? ` | FILTERED: ${filteringInfo.originalToolCount}→${filteringInfo.filteredToolCount} tools (-${filteringInfo.removedTools.length})` : ""}`
+            `[R${analysis.turn}] ${analysis.model} | ${analysis.segments.length} segs | ~${analysis.totalEstimatedTokens} tokens | $${analysis.estimatedCost.totalCost.toFixed(4)}${filteringInfo ? ` | FILTERED: ${filteringInfo.originalToolCount}→${filteringInfo.filteredToolCount} tools (-${filteringInfo.removedTools.length})` : ""}${stripInfo ? ` | STRIPPED: ${stripInfo.messagesStripped} msgs (-~${stripInfo.estimatedTokensSaved} tokens)` : ""}`
           );
 
           // Let plugins analyze the request (router prediction, etc.)
@@ -1108,6 +1269,7 @@ function createServer(opts = {}) {
       activeProfile,
       premium: false,
       routerMode: "off",
+      strip: stripSettings,
       ...pluginHost.getConnectPayload(),
     }));
 

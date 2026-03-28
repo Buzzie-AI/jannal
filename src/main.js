@@ -1,7 +1,7 @@
 import './styles.css'
 import { state } from './state.js'
 import { connect, rebuildGroups } from './ws.js'
-import { renderAll, renderContextBar, renderReqList, renderDetail, renderStatus, renderSessionTabs, copyClaudeCommand, getFilteredReqs } from './render.js'
+import { renderAll, renderContextBar, renderReqList, renderDetail, renderStatus, renderSessionTabs, renderSettings, copyClaudeCommand, getFilteredReqs } from './render.js'
 import { openModal, closeModal, setModalView, toggleAllTools, toggleGroupTools, toggleGroupAccordion, toggleGroupCheckbox, onToolToggle, saveCurrentAsProfile, createProfileFromThisTurn, filterModalContent, copyModalContent } from './modal.js'
 import { onProfileChange } from './profiles.js'
 import { restoreSession, exportSessionJSON, exportSessionCSV, downloadExport, persistSession } from './session.js'
@@ -167,6 +167,59 @@ function globalSearch(query) {
 
 // ─── Event listeners ────────────────────────────────────────────────────────
 
+document.getElementById('settingsToggle').addEventListener('click', () => {
+  state.showSettings = !state.showSettings
+  renderSettings()
+})
+
+document.getElementById('settingsCloseBtn').addEventListener('click', () => {
+  state.showSettings = false
+  renderSettings()
+})
+
+document.getElementById('settingsOverlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('settingsOverlay')) {
+    state.showSettings = false
+    renderSettings()
+  }
+})
+
+// Smart Strip settings changes
+document.getElementById('settingsBody').addEventListener('change', async (e) => {
+  if (e.target.name === 'stripMode') {
+    state.strip.mode = e.target.value
+    await postStripSettings()
+    renderAll()
+    renderSettings()
+  }
+})
+document.getElementById('settingsBody').addEventListener('input', (e) => {
+  if (e.target.id === 'stripKeepN') {
+    state.strip.keepN = parseInt(e.target.value) || 3
+    debounceStripSave()
+  } else if (e.target.id === 'stripThreshold') {
+    state.strip.threshold = parseInt(e.target.value) || 2000
+    debounceStripSave()
+  }
+})
+
+let stripSaveTimer = null
+function debounceStripSave() {
+  clearTimeout(stripSaveTimer)
+  stripSaveTimer = setTimeout(() => postStripSettings(), 500)
+}
+async function postStripSettings() {
+  try {
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ strip: state.strip }),
+    })
+  } catch (e) {
+    console.error('Failed to save strip settings:', e)
+  }
+}
+
 document.getElementById('themeToggle').addEventListener('click', () => {
   toggleTheme()
   renderAll()
@@ -283,6 +336,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     document.getElementById('globalSearchResults').classList.remove('open')
+    if (state.showSettings) { state.showSettings = false; renderSettings() }
     closeModal()
   }
 })

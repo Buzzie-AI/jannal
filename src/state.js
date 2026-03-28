@@ -14,6 +14,8 @@ export const state = {
   expandedGroups: {},  // groupId → boolean
   sessions: {},           // sessionId → { id, label, firstSeen }
   activeSessionTab: null, // null = "All", or a sessionId string
+  showSettings: false,
+  strip: { mode: 'off', keepN: 3, threshold: 2000 },
 }
 
 export let modalState = {
