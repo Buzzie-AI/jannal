@@ -6,6 +6,7 @@ import { openModal, closeModal, setModalView, toggleAllTools, toggleGroupTools, 
 import { onProfileChange } from './profiles.js'
 import { restoreSession, exportSessionJSON, exportSessionCSV, downloadExport, persistSession } from './session.js'
 import { initTheme, toggleTheme } from './theme.js'
+import { initShortcuts } from './shortcuts.js'
 
 // ─── Request selection & clearing ──────────────────────────────────────────
 
@@ -333,17 +334,12 @@ document.addEventListener('click', (e) => {
   }
 })
 
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    document.getElementById('globalSearchResults').classList.remove('open')
-    if (state.showSettings) { state.showSettings = false; renderSettings() }
-    closeModal()
-  }
-})
+// Keyboard shortcuts are handled by shortcuts.js (initShortcuts)
 
 // ─── Init ───────────────────────────────────────────────────────────────────
 
 initTheme()
+initShortcuts()
 restoreSession(state)
 rebuildGroups()
 connect()
