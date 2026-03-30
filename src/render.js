@@ -528,55 +528,6 @@ export function renderDetail() {
     html += `</div>`
   }
 
-  // Router decision (premium gate — short-circuit before rendering any router details)
-  if (!state.premium) {
-    html += `<div class="router-box premium-locked">`
-    html += `<div class="router-box-title">Router Intelligence</div>`
-    html += `<div class="premium-locked-msg">Intelligent routing, savings analysis, and auto-filtering.<br>Available in Pro.</div>`
-    html += `</div>`
-  } else if (req.router) {
-    const r = req.router
-    const modeLabel = r.mode === 'shadow' ? 'Shadow (observe only)' : r.mode === 'auto' ? 'Auto' : r.mode || 'off'
-
-    html += `<div class="router-box">`
-    html += `<div class="router-box-title">Router Decision</div>`
-    html += `<div class="usage-row"><span class="usage-label">Mode</span><span class="usage-value router-mode-${r.mode}">${modeLabel}</span></div>`
-
-    if (r.eligible) {
-      const isShadow = r.mode === 'shadow'
-      html += `<div class="usage-row"><span class="usage-label">Matched by</span><span class="usage-value" style="color:var(--cyan)">${escapeHtml(r.matched_by || '\u2014')}</span></div>`
-      if (r.confidence != null) {
-        const confColor = r.confidence >= 0.9 ? 'var(--green)' : r.confidence >= 0.7 ? 'var(--amber)' : 'var(--orange)'
-        html += `<div class="usage-row"><span class="usage-label">Confidence</span><span class="usage-value" style="color:${confColor}">${(r.confidence * 100).toFixed(0)}%</span></div>`
-      }
-      if (r.selected_groups && r.selected_groups.length > 0) {
-        const groups = r.selected_groups.filter(g => g !== 'core').join(', ') || '\u2014'
-        html += `<div class="usage-row"><span class="usage-label">${isShadow ? 'Would keep' : 'Selected groups'}</span><span class="usage-value" style="color:var(--text2);font-size:10px">${escapeHtml(groups)}</span></div>`
-      }
-      if (r.stripped_groups && r.stripped_groups.length > 0) {
-        html += `<div class="usage-row"><span class="usage-label">${isShadow ? 'Would strip' : 'Stripped groups'}</span><span class="usage-value" style="color:var(--text3);font-size:10px">${escapeHtml(r.stripped_groups.join(', '))}</span></div>`
-      }
-      if (r.estimated_tokens_saved > 0) {
-        const pct = req.totalEstimatedTokens > 0 ? ((r.estimated_tokens_saved / req.totalEstimatedTokens) * 100).toFixed(1) : '?'
-        html += `<div class="usage-row"><span class="usage-label">${isShadow ? 'Potential savings' : 'Est. savings'}</span><span class="usage-value" style="color:var(--green)">~${fmt(r.estimated_tokens_saved)} tokens (${pct}%)</span></div>`
-      }
-      if (r.sticky_reused) {
-        html += `<div style="margin-top:4px;font-size:9px;color:var(--purple)">Sticky route reused</div>`
-      }
-    } else {
-      const reason = r.skip_reason === 'router_off' ? 'Router is off'
-        : r.skip_reason === 'below_threshold' ? 'Below threshold'
-        : r.skip_reason === 'no_request_data' ? 'No request data'
-        : (r.skip_reason || 'Skipped')
-      html += `<div class="usage-row"><span class="usage-label">Status</span><span class="usage-value" style="color:var(--text3)">${escapeHtml(reason)}</span></div>`
-    }
-
-    if (r.mode === 'shadow') {
-      html += `<div class="router-shadow-note">All tools forwarded \u2014 shadow mode</div>`
-    }
-    html += `</div>`
-  }
-
   // Usage + cost comparison
   if (req.actualUsage) {
     const u = req.actualUsage
@@ -610,16 +561,6 @@ export function renderDetail() {
     html += `<div class="usage-row"><span class="usage-label">Input tokens ${isExact ? '(exact)' : '(est.)'}</span><span class="usage-value" style="color:${isExact ? 'var(--green)' : 'var(--text2)'}">${isExact ? '' : '~'}${req.totalEstimatedTokens.toLocaleString()}</span></div>`
     html += `<div class="usage-row"><span class="usage-label">Input cost ${isExact ? '' : '(est.)'}</span><span class="usage-value" style="color:${isExact ? 'var(--amber)' : 'var(--text3)'}">${isExact ? '' : '~'}${fmtCost(req.estimatedCost.totalCost)}</span></div>`
     if (isExact) html += `<div style="margin-top:4px;font-size:9px;color:var(--text3)">via count_tokens API</div>`
-    html += `</div>`
-  }
-
-  // Tool-use summary
-  if (req.toolsUsed && req.toolsUsed.length > 0) {
-    html += `<div class="usage-box">`
-    html += `<div style="font-size:10px;font-weight:700;color:var(--cyan);margin-bottom:4px">Tools Used (${req.toolsUsed.length})</div>`
-    for (const name of req.toolsUsed) {
-      html += `<div style="font-size:10px;color:var(--text2);padding:1px 0">${escapeHtml(name)}</div>`
-    }
     html += `</div>`
   }
 
