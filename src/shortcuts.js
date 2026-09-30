@@ -3,6 +3,7 @@ import { renderAll, renderContextBar, renderReqList, renderDetail, renderSetting
 import { openModal, closeModal, setModalView, copyModalContent, filterModalContent } from './modal.js'
 import { toggleTheme } from './theme.js'
 import { persistSession } from './session.js'
+import { isProfileManagerOpen, closeProfileManager } from './profile-manager.js'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -95,6 +96,7 @@ export function initShortcuts() {
     // Escape — close things in priority order
     if (key === 'Escape') {
       if (isHelpOpen()) { closeHelp(); return }
+      if (isProfileManagerOpen()) { closeProfileManager(); return }
       document.getElementById('globalSearchResults')?.classList.remove('open')
       if (state.showSettings) { state.showSettings = false; renderSettings(); return }
       if (isModalOpen()) { closeModal(); return }
@@ -104,6 +106,9 @@ export function initShortcuts() {
 
     // Don't fire shortcuts when typing in inputs
     if (isInputFocused()) return
+
+    // The profile manager is modal — no background navigation while it's open
+    if (isProfileManagerOpen()) return
 
     // ? — show help
     if (key === '?' || (e.shiftKey && key === '/')) {

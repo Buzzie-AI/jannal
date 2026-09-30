@@ -34,6 +34,9 @@
     <select class="profile-select" id="profileSelect">
       <option value="All Tools">All Tools</option>
     </select>
+    <button class="theme-toggle" id="profileManageBtn" title="Manage profiles" aria-label="Manage profiles">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+    </button>
     <span class="filter-badge" id="filterBadge" style="display:none">FILTERING</span>
     <div class="router-badge-wrapper">
       <span class="router-badge" id="routerBadge"></span>
@@ -142,6 +145,26 @@
       <button id="copyBtn">Copy</button>
     </div>
     <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- Profile Manager -->
+<div class="modal-overlay" id="profileManagerOverlay">
+  <div class="modal pm-modal">
+    <div class="modal-header">
+      <div class="modal-title">
+        <h2>Profiles</h2>
+        <div class="modal-meta">Choose which tools are sent to the model</div>
+      </div>
+      <button class="modal-close" id="pmCloseBtn">&times;</button>
+    </div>
+    <div class="pm-layout">
+      <div class="pm-sidebar">
+        <div class="pm-list" id="pmList"></div>
+        <button class="btn-secondary pm-new-btn" id="pmNewBtn">+ New profile</button>
+      </div>
+      <div class="pm-editor" id="pmEditor"></div>
+    </div>
   </div>
 </div>
 

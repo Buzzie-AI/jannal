@@ -52,7 +52,7 @@ export function escapeHtml(text) {
 }
 
 export function isToolEnabled(toolName, profile, isAllTools) {
-  if (isAllTools || !profile || !profile.tools || profile.tools.length === 0) return true
+  if (isAllTools || !profile || !profile.tools) return true
   if (profile.mode === 'blocklist') {
     return !profile.tools.includes(toolName)
   } else {

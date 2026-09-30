@@ -2,6 +2,7 @@ const http = require("http");
 const https = require("https");
 const { WebSocketServer } = require("ws");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const { PluginHost } = require("./lib/plugins");
@@ -231,13 +232,28 @@ function createServer(opts = {}) {
 
   // ─── Profile management ────────────────────────────────────────────────────
 
-  const PROFILES_FILE = path.join(__dirname, "profiles.json");
+  // User data lives outside the package so it survives upgrades and never ships to npm
+  const DATA_DIR = process.env.JANNAL_DATA_DIR || path.join(os.homedir(), ".jannal");
+  const PROFILES_FILE = path.join(DATA_DIR, "profiles.json");
+  const LEGACY_PROFILES_FILE = path.join(__dirname, "profiles.json");
+  const KNOWN_TOOLS_FILE = path.join(DATA_DIR, "known-tools.json");
+  const KNOWN_TOOLS_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
   let profiles = {};
   let activeProfile = "All Tools";
 
+  function ensureDataDir() {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+
   function loadProfiles() {
     try {
+      // One-time migration from the old in-package location
+      if (!fs.existsSync(PROFILES_FILE) && fs.existsSync(LEGACY_PROFILES_FILE)) {
+        ensureDataDir();
+        fs.copyFileSync(LEGACY_PROFILES_FILE, PROFILES_FILE);
+        console.log(`  Migrated profiles → ${PROFILES_FILE}`);
+      }
       if (fs.existsSync(PROFILES_FILE)) {
         const data = JSON.parse(fs.readFileSync(PROFILES_FILE, "utf-8"));
         profiles = data.profiles || {};
@@ -254,9 +270,61 @@ function createServer(opts = {}) {
 
   function saveProfiles() {
     try {
+      ensureDataDir();
       fs.writeFileSync(PROFILES_FILE, JSON.stringify({ profiles, activeProfile }, null, 2));
     } catch (err) {
       console.error("Failed to save profiles:", err.message);
+    }
+  }
+
+  function isValidProfileName(name) {
+    return typeof name === "string" && name.trim().length > 0 && name !== "All Tools";
+  }
+
+  // ─── Known tools (the tool universe the profile editor works against) ──────
+
+  let knownTools = {}; // name -> { tool, lastSeen }
+  let knownToolsSaveTimer = null;
+
+  function loadKnownTools() {
+    try {
+      if (fs.existsSync(KNOWN_TOOLS_FILE)) {
+        const data = JSON.parse(fs.readFileSync(KNOWN_TOOLS_FILE, "utf-8"));
+        const cutoff = Date.now() - KNOWN_TOOLS_MAX_AGE_MS;
+        for (const [name, entry] of Object.entries(data.tools || {})) {
+          if (entry && entry.lastSeen >= cutoff) knownTools[name] = entry;
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load known tools:", err.message);
+    }
+  }
+
+  function saveKnownTools() {
+    try {
+      ensureDataDir();
+      fs.writeFileSync(KNOWN_TOOLS_FILE, JSON.stringify({ tools: knownTools }));
+    } catch (err) {
+      console.error("Failed to save known tools:", err.message);
+    }
+  }
+
+  function recordKnownTools(tools) {
+    if (!Array.isArray(tools) || tools.length === 0) return;
+    const now = Date.now();
+    let changed = false;
+    for (const t of tools) {
+      if (!t || !t.name) continue;
+      const existing = knownTools[t.name];
+      // Only rewrite the file for new tools or once a day per tool — not every request
+      if (!existing || now - existing.lastSeen > 24 * 60 * 60 * 1000) changed = true;
+      knownTools[t.name] = { tool: t, lastSeen: now };
+    }
+    if (changed && !knownToolsSaveTimer) {
+      knownToolsSaveTimer = setTimeout(() => {
+        knownToolsSaveTimer = null;
+        saveKnownTools();
+      }, 2000);
     }
   }
 
@@ -265,7 +333,11 @@ function createServer(opts = {}) {
       return { filtered: tools || [], removed: [] };
     }
     const profile = profiles[profileName];
-    if (!profile || !profile.tools || profile.tools.length === 0) {
+    if (!profile || !profile.tools) {
+      return { filtered: tools, removed: [] };
+    }
+    // An empty blocklist blocks nothing; an empty allowlist (below) allows nothing
+    if (profile.mode === "blocklist" && profile.tools.length === 0) {
       return { filtered: tools, removed: [] };
     }
 
@@ -294,6 +366,7 @@ function createServer(opts = {}) {
   }
 
   loadProfiles();
+  loadKnownTools();
 
   // ─── Smart Strip settings ─────────────────────────────────────────────────
 
@@ -929,6 +1002,12 @@ function createServer(opts = {}) {
         return;
       }
 
+      // ── API: Every tool seen recently, for the profile editor ──
+      if (req.url === "/api/known-tools") {
+        jsonResponse(res, 200, { tools: Object.values(knownTools).map((e) => e.tool) });
+        return;
+      }
+
       // ── API: Router config (default — no plugin) ──
       if (req.url === "/api/router/config") {
         jsonResponse(res, 200, {
@@ -969,9 +1048,14 @@ function createServer(opts = {}) {
       readBody(req).then((buf) => {
         try {
           const data = JSON.parse(buf.toString());
-          const { name, mode, tools } = data;
-          if (!name || name === "All Tools") {
+          const { mode, tools, overwrite } = data;
+          const name = typeof data.name === "string" ? data.name.trim() : "";
+          if (!isValidProfileName(name)) {
             jsonResponse(res, 400, { error: "Invalid profile name" });
+            return;
+          }
+          if (profiles[name] && !overwrite) {
+            jsonResponse(res, 409, { error: `A profile named "${name}" already exists` });
             return;
           }
           profiles[name] = { name, mode: mode || "blocklist", tools: tools || [] };
@@ -1002,6 +1086,58 @@ function createServer(opts = {}) {
         }
       });
       return;
+    }
+
+    // Edit (and optionally rename) an existing profile
+    if (req.method === "PUT") {
+      const putMatch = req.url.match(/^\/api\/profiles\/(.+)$/);
+      if (putMatch) {
+        const oldName = decodeURIComponent(putMatch[1]);
+        readBody(req).then((buf) => {
+          try {
+            const data = JSON.parse(buf.toString());
+            if (oldName === "All Tools" || !profiles[oldName]) {
+              jsonResponse(res, oldName === "All Tools" ? 400 : 404, {
+                error: oldName === "All Tools" ? "Cannot edit default profile" : "Profile not found",
+              });
+              return;
+            }
+            const newName = typeof data.newName === "string" ? data.newName.trim() : oldName;
+            if (!isValidProfileName(newName)) {
+              jsonResponse(res, 400, { error: "Invalid profile name" });
+              return;
+            }
+            if (newName !== oldName && profiles[newName]) {
+              jsonResponse(res, 409, { error: `A profile named "${newName}" already exists` });
+              return;
+            }
+            const prev = profiles[oldName];
+            const updated = {
+              name: newName,
+              mode: data.mode || prev.mode,
+              tools: Array.isArray(data.tools) ? data.tools : prev.tools,
+            };
+            if (newName !== oldName) {
+              // Rebuild to keep the profile's position in the dropdown order
+              const next = {};
+              for (const [k, v] of Object.entries(profiles)) {
+                if (k === oldName) next[newName] = updated;
+                else next[k] = v;
+              }
+              profiles = next;
+              if (activeProfile === oldName) activeProfile = newName;
+            } else {
+              profiles[oldName] = updated;
+            }
+            saveProfiles();
+            broadcast({ type: "profiles_updated", profiles, active: activeProfile });
+            jsonResponse(res, 200, { success: true, profile: updated });
+          } catch (err) {
+            jsonResponse(res, 400, { error: err.message });
+          }
+        });
+        return;
+      }
     }
 
     if (req.method === "DELETE") {
@@ -1036,6 +1172,8 @@ function createServer(opts = {}) {
       if (req.url.includes("/messages")) {
         try {
           const parsed = JSON.parse(bodyStr);
+
+          recordKnownTools(parsed.tools);
 
           // Apply tool filtering
           const originalToolCount = (parsed.tools || []).length;

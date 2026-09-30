@@ -1,7 +1,7 @@
 import { state, modalState } from './state.js'
 import { getSegColor, getSegLabel, fmt, escapeHtml, isToolEnabled, estimateToolTokens, groupToolsByServer, getToolServer } from './utils.js'
 import { fetchContent } from './api.js'
-import { saveProfile } from './profiles.js'
+import { saveProfile, uniqueProfileName } from './profiles.js'
 
 // ─── Modal ──────────────────────────────────────────────────────────────────
 
@@ -311,7 +311,7 @@ export async function createProfileFromThisTurn() {
   const req = state.reqs[state.selectedReq]
   const toolsUsed = req?.toolsUsed || []
   if (toolsUsed.length === 0) return
-  const name = `Req ${req?.turn ?? 0} tools`
+  const name = uniqueProfileName(`Req ${req?.turn ?? 0} tools`)
   const result = await saveProfile(name, 'allowlist', toolsUsed)
   if (result.success) {
     const bar = document.querySelector('.save-profile-bar')
@@ -341,6 +341,13 @@ export async function saveCurrentAsProfile() {
   })
 
   const result = await saveProfile(name, 'allowlist', enabledTools)
+  if (result.error) {
+    // e.g. name already taken — editing existing profiles happens in the Profile Manager
+    nameInput.style.borderColor = 'var(--red)'
+    nameInput.title = result.error
+    setTimeout(() => { nameInput.style.borderColor = ''; nameInput.title = '' }, 2500)
+    return
+  }
   if (result.success) {
     nameInput.value = ''
     const bar = document.querySelector('.save-profile-bar')

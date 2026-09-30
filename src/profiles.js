@@ -8,6 +8,14 @@ export function onProfileChange(name) {
   sendWs({ type: 'set_active_profile', profile: name })
 }
 
+/** "Foo" → "Foo", or "Foo 2", "Foo 3"… if taken */
+export function uniqueProfileName(base) {
+  if (!state.profiles[base]) return base
+  let i = 2
+  while (state.profiles[`${base} ${i}`]) i++
+  return `${base} ${i}`
+}
+
 export async function saveProfile(name, mode, tools) {
   try {
     const data = await postProfile(name, mode, tools)

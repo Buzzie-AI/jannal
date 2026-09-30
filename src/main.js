@@ -4,6 +4,7 @@ import { connect, rebuildGroups } from './ws.js'
 import { renderAll, renderContextBar, renderReqList, renderDetail, renderStatus, renderSessionTabs, renderSettings, copyClaudeCommand, getFilteredReqs } from './render.js'
 import { openModal, closeModal, setModalView, toggleAllTools, toggleGroupTools, toggleGroupAccordion, toggleGroupCheckbox, onToolToggle, saveCurrentAsProfile, createProfileFromThisTurn, filterModalContent, copyModalContent } from './modal.js'
 import { onProfileChange } from './profiles.js'
+import { initProfileManager } from './profile-manager.js'
 import { restoreSession, exportSessionJSON, exportSessionCSV, downloadExport, persistSession } from './session.js'
 import { initTheme, toggleTheme } from './theme.js'
 import { initShortcuts } from './shortcuts.js'
@@ -229,6 +230,8 @@ document.getElementById('themeToggle').addEventListener('click', () => {
 document.getElementById('profileSelect').addEventListener('change', (e) => {
   onProfileChange(e.target.value)
 })
+
+initProfileManager()
 
 document.getElementById('clearBtn').addEventListener('click', clearReqs)
 document.getElementById('viewToggleBtn').addEventListener('click', toggleViewMode)

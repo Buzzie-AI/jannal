@@ -616,6 +616,7 @@ body {
 
 /* Custom checkboxes */
 .tool-group-checkbox,
+.pm-group-cb,
 .tool-card input[type="checkbox"] {
   -webkit-appearance: none; appearance: none;
   width: 16px; height: 16px; flex-shrink: 0;
@@ -624,10 +625,12 @@ body {
   position: relative; transition: all var(--duration-fast);
 }
 .tool-group-checkbox:checked,
+.pm-group-cb:checked,
 .tool-card input[type="checkbox"]:checked {
   background: var(--blue); border-color: var(--blue);
 }
 .tool-group-checkbox:checked::after,
+.pm-group-cb:checked::after,
 .tool-card input[type="checkbox"]:checked::after {
   content: '';
   position: absolute; left: 4px; top: 1px;
@@ -635,6 +638,11 @@ body {
   border: solid white; border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
+.pm-group-cb:indeterminate { background: var(--blue); border-color: var(--blue); }
+.pm-group-cb:indeterminate::after {
+  content: ''; position: absolute; left: 3px; top: 6px; width: 7px; height: 2px; background: white;
+}
+.pm-group-cb:disabled, .tool-card input[type="checkbox"]:disabled { opacity: 0.5; cursor: default; }
 
 .tool-group-chevron {
   font-size: 9px; color: var(--text3);
@@ -686,6 +694,91 @@ body {
   background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.15);
   font-size: 11px; color: var(--green); font-weight: 600;
 }
+
+/* ─── Profile Manager ─── */
+.pm-modal { max-width: 1040px; }
+.pm-layout { flex: 1; display: flex; min-height: 0; }
+.pm-sidebar {
+  width: 230px; flex-shrink: 0; display: flex; flex-direction: column;
+  border-right: 1px solid var(--border); background: var(--overlay-1);
+}
+.pm-list { flex: 1; overflow-y: auto; padding: 8px; }
+.pm-list-item {
+  display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left;
+  padding: 8px 10px; margin-bottom: 2px; border-radius: var(--radius-sm);
+  border: 1px solid transparent; background: transparent; cursor: pointer;
+  font-family: var(--font-ui); color: var(--text); transition: all var(--duration-fast);
+}
+.pm-list-item:hover { background: var(--overlay-4); }
+.pm-list-item.selected { background: rgba(96,165,250,0.10); border-color: rgba(96,165,250,0.25); }
+.pm-list-name { font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-list-meta { font-size: 10px; color: var(--text3); display: flex; align-items: center; gap: 6px; }
+.pm-dirty-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); flex-shrink: 0; }
+.pm-active-tag {
+  font-size: 8px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 1px 5px; border-radius: 3px; background: rgba(52,211,153,0.12); color: var(--green);
+}
+.pm-active-tag--lg { font-size: 9px; padding: 5px 8px; border-radius: var(--radius-sm); }
+.pm-new-btn {
+  margin: 8px; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px dashed var(--overlay-12);
+  font-size: 11px; font-weight: 700; font-family: var(--font-ui); cursor: pointer;
+}
+
+.pm-editor { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pm-editor-head {
+  display: flex; align-items: center; gap: 10px; padding: 12px 20px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.pm-name-input {
+  flex: 1; min-width: 0; padding: 6px 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--overlay-10); background: var(--overlay-3); color: var(--text);
+  font-size: 14px; font-weight: 700; font-family: var(--font-ui); outline: none;
+  transition: border-color var(--duration-fast);
+}
+.pm-name-input:focus { border-color: rgba(96,165,250,0.4); box-shadow: 0 0 0 3px rgba(96,165,250,0.1); }
+.pm-name-input:disabled { background: transparent; border-color: transparent; }
+.pm-head-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.pm-btn {
+  padding: 6px 12px; border-radius: var(--radius-sm); border: none; cursor: pointer;
+  font-size: 11px; font-weight: 700; font-family: var(--font-ui); transition: all var(--duration-fast);
+}
+.pm-btn:active { transform: scale(0.97); }
+.pm-btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+.pm-btn-danger:hover, .pm-btn-danger.confirm { background: rgba(248,113,113,0.15); color: var(--red); }
+.pm-small-btn { padding: 2px 6px; font-size: 9px; border: none; border-radius: 4px; cursor: pointer; font-family: var(--font-ui); }
+
+.pm-mode-row { display: flex; align-items: center; gap: 12px; padding: 10px 20px 0; flex-shrink: 0; }
+.pm-mode-toggle { display: flex; padding: 2px; border-radius: 99px; background: var(--overlay-4); flex-shrink: 0; }
+.pm-mode-toggle button {
+  padding: 4px 12px; border-radius: 99px; border: none; cursor: pointer; background: transparent;
+  font-size: 11px; font-weight: 600; font-family: var(--font-ui); color: var(--text2);
+}
+.pm-mode-toggle button.active { background: rgba(96,165,250,0.15); color: var(--blue); box-shadow: inset 0 0 0 1px rgba(96,165,250,0.25); }
+.pm-hint { font-size: 11px; color: var(--text3); }
+
+.pm-tools-bar {
+  display: flex; align-items: center; gap: 6px; margin: 10px 20px 0; padding: 8px 12px;
+  border-radius: var(--radius-md); background: var(--overlay-2); flex-shrink: 0;
+}
+.pm-tools-bar .modal-tools-header-left { flex: 1; }
+.pm-saves { color: var(--green); font-weight: 600; }
+.pm-filter {
+  padding: 4px 10px; border-radius: 99px; border: 1px solid var(--overlay-8);
+  background: var(--overlay-3); color: var(--text); font-size: 11px; width: 160px;
+  outline: none; font-family: var(--font-ui);
+}
+.pm-filter:focus { border-color: rgba(96,165,250,0.4); box-shadow: 0 0 0 3px rgba(96,165,250,0.1); }
+.pm-tools { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 4px 20px 12px; }
+.pm-tools .tool-card { cursor: pointer; }
+.pm-empty { padding: 40px 20px; text-align: center; font-size: 12px; color: var(--text3); }
+
+.pm-footer {
+  display: flex; align-items: center; gap: 8px; padding: 10px 20px;
+  border-top: 1px solid var(--border); flex-shrink: 0; min-height: 48px;
+}
+.pm-footer-msg { flex: 1; font-size: 11px; color: var(--text3); }
+.pm-footer-warn { color: var(--amber); font-weight: 600; }
+.pm-footer-error { color: var(--red); font-weight: 600; }
 
 /* ─── Settings Overlay ─── */
 .settings-overlay {

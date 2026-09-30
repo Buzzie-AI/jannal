@@ -1,6 +1,7 @@
 import { state, MAX_REQS } from './state.js'
 import { renderAll, renderStatus, renderDetail } from './render.js'
 import { renderProfileSelector } from './profiles.js'
+import { onProfilesUpdated } from './profile-manager.js'
 import { persistSession, addDailyCost, addDailySavings } from './session.js'
 import { inputRate } from './utils.js'
 
@@ -214,11 +215,13 @@ export function connect() {
       state.profiles = data.profiles || {}
       state.activeProfile = data.active || 'All Tools'
       renderProfileSelector()
+      onProfilesUpdated()
     }
 
     if (data.type === 'active_profile_changed') {
       state.activeProfile = data.active || 'All Tools'
       renderProfileSelector()
+      onProfilesUpdated()
     }
 
     if (data.type === 'settings_updated') {

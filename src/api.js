@@ -14,6 +14,20 @@ export async function postProfile(name, mode, tools) {
   return resp.json()
 }
 
+export async function putProfile(name, { newName, mode, tools }) {
+  const resp = await fetch(`/api/profiles/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newName, mode, tools }),
+  })
+  return resp.json()
+}
+
+export async function fetchKnownTools() {
+  const resp = await fetch('/api/known-tools')
+  return resp.json()
+}
+
 export async function deleteProfile(name) {
   const resp = await fetch(`/api/profiles/${encodeURIComponent(name)}`, {
     method: 'DELETE',
